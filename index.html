@@ -101,9 +101,15 @@ input,select,textarea{font-family:inherit;font-size:14px}
   border-radius: 12px; 
   overflow: hidden; 
   background: #0f172a; 
-  /* 必须给一个最小高度，否则摄像头视频流会被压缩为0高度不可见 */
   min-height: 280px; 
   margin-bottom: 14px; 
+  /* 新增：默认隐藏 */
+  display: none; 
+}
+
+/* 新增：当加上 active 类时才显示 */
+.reader.active {
+  display: block; 
 }
 
 .scan-controls{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
@@ -787,6 +793,7 @@ async function startScan() {
     toast('扫码库未加载，请联网后刷新页面', 'err');
     return;
   }
+  $('#reader').classList.add('active')
   scanner = new Html5Qrcode('reader');
   try {
     await scanner.start(
@@ -822,6 +829,7 @@ async function stopScan() {
   } catch (e) { /* 忽略 */ }
   isScanning = false;
   scanner = null;
+  $('#reader').classList.remove('active');
   updateScanButtons();
 }
 
