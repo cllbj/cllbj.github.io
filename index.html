@@ -1,0 +1,977 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>物品借还管理工具</title>
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs2@0.0.2/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<!-- 新增：jsQR 高容错解码库，专门处理手机翻拍的照片 -->
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+<style>
+:root{
+  --primary:#2563eb; --primary-d:#1d4ed8; --success:#10b981; --success-d:#059669;
+  --warning:#f59e0b; --danger:#ef4444; --bg:#f1f5f9; --card:#fff;
+  --text:#1e293b; --muted:#64748b; --border:#e2e8f0;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;
+  background:var(--bg);color:var(--text);line-height:1.5;-webkit-font-smoothing:antialiased}
+button{font-family:inherit;cursor:pointer;border:none;background:none}
+input,select,textarea{font-family:inherit;font-size:14px}
+
+.app{max-width:1180px;margin:0 auto;padding:16px 16px 60px}
+.app-header{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:14px 18px;background:linear-gradient(135deg,#2563eb,#4f46e5);color:#fff;
+  border-radius:14px;box-shadow:0 4px 14px rgba(37,99,235,.25);flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:10px}
+.brand .logo{font-size:24px}
+.brand h1{font-size:18px;font-weight:700;letter-spacing:.5px}
+.header-actions{display:flex;gap:8px;flex-wrap:wrap}
+.header-actions .btn{background:rgba(255,255,255,.18);color:#fff;border:1px solid rgba(255,255,255,.3)}
+.header-actions .btn:hover{background:rgba(255,255,255,.3)}
+
+.tabs{display:flex;gap:6px;margin:18px 0 14px;background:#fff;padding:6px;border-radius:12px;
+  box-shadow:0 1px 3px rgba(15,23,42,.06);overflow-x:auto}
+.tab{padding:9px 20px;border-radius:8px;font-size:14px;font-weight:600;color:var(--muted);
+  white-space:nowrap;transition:.18s}
+.tab:hover{background:#f1f5f9;color:var(--text)}
+.tab.active{background:var(--primary);color:#fff;box-shadow:0 2px 8px rgba(37,99,235,.3)}
+
+.panel{display:none}
+.panel.active{display:block;animation:fade .25s ease}
+@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+.toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.input{width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:9px;
+  background:#fff;outline:none;transition:.18s}
+.input:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+.toolbar .input{flex:1;min-width:160px;width:auto}
+.toolbar select.input{flex:0 0 130px;min-width:130px;cursor:pointer}
+
+.btn{padding:9px 16px;border-radius:9px;font-size:14px;font-weight:600;
+  background:#fff;color:var(--text);border:1px solid var(--border);transition:.18s;white-space:nowrap}
+.btn:hover{background:#f8fafc;border-color:#cbd5e1}
+.btn:active{transform:scale(.97)}
+.btn.primary{background:var(--primary);color:#fff;border-color:var(--primary)}
+.btn.primary:hover{background:var(--primary-d)}
+.btn.success{background:var(--success);color:#fff;border-color:var(--success)}
+.btn.success:hover{background:var(--success-d)}
+.btn.danger{background:#fff;color:var(--danger);border-color:#fecaca}
+.btn.danger:hover{background:#fef2f2}
+.btn.sm{padding:6px 10px;font-size:12.5px;border-radius:7px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+
+.stats{font-size:13px;color:var(--muted);margin-bottom:12px;padding-left:2px}
+.stats b{color:var(--text)}
+.stats .warn{color:var(--danger);font-weight:700}
+
+.item-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px}
+.item-card{background:var(--card);border-radius:13px;padding:14px;border:1px solid var(--border);
+  box-shadow:0 1px 3px rgba(15,23,42,.05);display:flex;flex-direction:column;gap:8px;
+  transition:.2s;position:relative;overflow:hidden}
+.item-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--success)}
+.item-card.borrowed::before{background:var(--warning)}
+.item-card:hover{box-shadow:0 6px 18px rgba(15,23,42,.1);transform:translateY(-2px)}
+.card-top{display:flex;justify-content:space-between;align-items:center}
+.code{font-size:12px;font-weight:700;color:var(--muted);background:#f1f5f9;
+  padding:2px 8px;border-radius:6px;letter-spacing:.4px}
+.badge{font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:20px}
+.badge.available{background:#dcfce7;color:#15803d}
+.badge.borrowed{background:#fef3c7;color:#b45309}
+.badge.overdue{background:#fee2e2;color:#b91c1c}
+.item-name{font-size:16px;font-weight:700;line-height:1.3;word-break:break-all}
+.item-meta{display:flex;flex-wrap:wrap;gap:5px}
+.tag{font-size:11.5px;color:#475569;background:#f1f5f9;padding:2px 8px;border-radius:5px}
+.item-loc{font-size:12.5px;color:var(--muted)}
+.borrow-info{font-size:12.5px;color:#b45309;background:#fffbeb;padding:6px 9px;
+  border-radius:7px;border:1px solid #fef3c7}
+.borrow-info.over{color:#b91c1c;background:#fef2f2;border-color:#fecaca}
+.card-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:auto;padding-top:6px;
+  border-top:1px dashed var(--border)}
+
+.empty{grid-column:1/-1;text-align:center;color:var(--muted);padding:50px 20px;font-size:14px}
+.empty .big{font-size:40px;display:block;margin-bottom:10px;opacity:.5}
+
+/* 扫码页 */
+.scan-wrap{background:#fff;border-radius:14px;padding:20px;border:1px solid var(--border);
+  max-width:640px;margin:0 auto;box-shadow:0 1px 3px rgba(15,23,42,.05)}
+.reader{width:100%;border-radius:12px;overflow:hidden;background:#0f172a;min-height:0;margin-bottom:14px}
+.reader:empty{display:none}
+.scan-controls{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.divider{text-align:center;color:var(--muted);font-size:13px;margin:18px 0;position:relative}
+.divider::before,.divider::after{content:'';position:absolute;top:50%;width:38%;height:1px;background:var(--border)}
+.divider::before{left:0}.divider::after{right:0}
+.manual-row{display:flex;gap:8px}
+.hint{font-size:12.5px;color:var(--muted);margin-top:14px;line-height:1.7;
+  background:#f8fafc;padding:10px 12px;border-radius:9px;border-left:3px solid #cbd5e1}
+.hint code{background:#e2e8f0;padding:1px 5px;border-radius:4px;font-size:12px}
+
+/* 记录表 */
+.table-wrap{background:#fff;border-radius:13px;border:1px solid var(--border);overflow:auto}
+.table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:760px}
+.table th{background:#f8fafc;color:var(--muted);font-weight:600;text-align:left;
+  padding:11px 14px;border-bottom:1px solid var(--border);font-size:12.5px;white-space:nowrap}
+.table td{padding:11px 14px;border-bottom:1px solid #f1f5f9;vertical-align:middle}
+.table tr:last-child td{border-bottom:none}
+.table tr:hover td{background:#f8fafc}
+.pill{font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:20px;white-space:nowrap}
+.pill.borrow{background:#fef3c7;color:#b45309}
+.pill.return{background:#dcfce7;color:#15803d}
+
+/* 模态框 */
+.modal-mask{position:fixed;inset:0;background:rgba(15,23,42,.55);backdrop-filter:blur(2px);
+  display:flex;align-items:center;justify-content:center;z-index:1000;padding:16px;
+  animation:fade .18s ease}
+.modal{background:#fff;border-radius:16px;width:100%;max-width:470px;max-height:92vh;
+  overflow-y:auto;box-shadow:0 20px 50px rgba(15,23,42,.3);animation:pop .22s ease}
+@keyframes pop{from{transform:scale(.94);opacity:0}to{transform:scale(1);opacity:1}}
+.modal-head{display:flex;justify-content:space-between;align-items:center;
+  padding:16px 20px;border-bottom:1px solid var(--border)}
+.modal-head h3{font-size:16px;font-weight:700}
+.icon-btn{width:30px;height:30px;border-radius:8px;color:var(--muted);font-size:15px;
+  display:flex;align-items:center;justify-content:center;transition:.15s}
+.icon-btn:hover{background:#f1f5f9;color:var(--text)}
+.modal-body{padding:18px 20px;display:flex;flex-direction:column;gap:13px}
+.modal-foot{display:flex;justify-content:flex-end;gap:10px;padding:14px 20px;
+  border-top:1px solid var(--border);background:#f8fafc;border-radius:0 0 16px 16px}
+.field{display:flex;flex-direction:column;gap:6px}
+.field>span{font-size:13px;font-weight:600;color:#475569}
+.field .req{color:var(--danger)}
+.row{display:flex;gap:12px}
+.row .field{flex:1;min-width:0}
+
+.item-brief{background:#f8fafc;border-radius:10px;padding:12px 14px;
+  border:1px solid var(--border);font-size:13.5px;line-height:1.7}
+.item-brief .n{font-size:15px;font-weight:700;margin-bottom:4px}
+.item-brief .m{color:var(--muted);font-size:12.5px}
+
+.qr-body{align-items:center;text-align:center}
+.qr-box{padding:12px;background:#fff;border-radius:10px;display:inline-block;
+  border:1px solid var(--border)}
+.qr-box img,.qr-box canvas{display:block}
+.qr-name{font-size:16px;font-weight:700;margin-top:4px}
+.qr-code{font-size:13px;color:var(--muted)}
+.toast{position:fixed;left:50%;bottom:36px;transform:translateX(-50%) translateY(20px);
+  background:#0f172a;color:#fff;padding:11px 22px;border-radius:10px;font-size:14px;
+  font-weight:600;opacity:0;transition:.3s;z-index:2000;pointer-events:none;
+  box-shadow:0 8px 24px rgba(15,23,42,.35)}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast.ok{background:#059669}
+.toast.err{background:#dc2626}
+
+@media (max-width:560px){
+  .app{padding:12px 12px 50px}
+  .brand h1{font-size:16px}
+  .item-grid{grid-template-columns:1fr}
+  .toolbar select.input{flex:1}
+  .row{flex-direction:column}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="app-header">
+    <div class="brand"><span class="logo">📦</span><h1>物品借还管理工具</h1></div>
+    <div class="header-actions">
+      <button class="btn" id="btnExport">导出备份</button>
+      <button class="btn" id="btnImport">导入备份</button>
+      <input type="file" id="importFile" accept=".json" hidden>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="items">📋 物品列表</button>
+    <button class="tab" data-tab="scan">📷 扫码借还</button>
+    <button class="tab" data-tab="records">🕘 借还记录</button>
+  </nav>
+
+  <main>
+    <!-- ========== 物品列表 ========== -->
+    <section class="panel active" id="panel-items">
+      <div class="toolbar">
+        <input type="search" class="input" id="searchInput" placeholder="搜索：名称 / 编号 / 分类 / 位置">
+        <select class="input" id="filterStatus">
+          <option value="all">全部状态</option>
+          <option value="available">在库</option>
+          <option value="borrowed">已借出</option>
+        </select>
+        <button class="btn primary" id="btnAddItem">＋ 添加物品</button>
+        <button class="btn" id="btnPrintAll">🖨 打印全部标签</button>
+      </div>
+      <div class="stats" id="stats"></div>
+      <div class="item-grid" id="itemList"></div>
+    </section>
+
+    <!-- ========== 扫码借还 ========== -->
+    <section class="panel" id="panel-scan">
+      <div class="scan-wrap">
+        <div id="reader" class="reader"></div>
+        <div class="scan-controls">
+          <button class="btn primary" id="btnStartScan">📷 开始扫码</button>
+          <button class="btn" id="btnStopScan" disabled>停止</button>
+          <button class="btn" id="btnScanFile">🖼 从图片识别</button>
+          <input type="file" accept="image/*" id="qrFile" hidden>
+        </div>
+        <div class="divider">或手动输入</div>
+        <div class="manual-row">
+          <input class="input" id="manualInput" placeholder="输入物品编号 / ID，也可用 USB 扫码枪">
+          <button class="btn primary" id="btnManual">确定</button>
+        </div>
+        
+      </div>
+    </section>
+
+    <!-- ========== 借还记录 ========== -->
+    <section class="panel" id="panel-records">
+      <div class="toolbar">
+        <input type="search" class="input" id="recordSearch" placeholder="搜索记录：物品 / 借用人">
+        <button class="btn danger" id="btnClearRecords">清空全部记录</button>
+      </div>
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>时间</th><th>操作</th><th>物品</th><th>编号</th>
+              <th>借用人</th><th>应还日期</th><th>备注</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="recordBody"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+/* ============================================================
+ *  物品借还管理工具 —— 纯前端实现
+ *  数据保存在浏览器 localStorage 中
+ * ============================================================ */
+
+const STORE_KEY = 'item_loan_tool_v1';
+let state = { items: [], records: [] };
+
+/* ---------- 工具函数 ---------- */
+const $  = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+function pad(n) { return String(n).padStart(2, '0'); }
+function todayStr(d = new Date()) {
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+function fmtTime(ts) {
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function toast(msg, type = '') {
+  const t = document.createElement('div');
+  t.className = 'toast ' + type;
+  t.textContent = msg;
+  document.body.appendChild(t);
+  requestAnimationFrame(() => t.classList.add('show'));
+  setTimeout(() => {
+    t.classList.remove('show');
+    setTimeout(() => t.remove(), 350);
+  }, 2000);
+}
+
+/* ---------- 数据持久化 ---------- */
+function loadData() {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (raw) {
+      const d = JSON.parse(raw);
+      state.items = Array.isArray(d.items) ? d.items : [];
+      state.records = Array.isArray(d.records) ? d.records : [];
+    }
+  } catch (e) {
+    console.error('读取数据失败', e);
+    state = { items: [], records: [] };
+  }
+}
+function saveData() {
+  try {
+    localStorage.setItem(STORE_KEY, JSON.stringify(state));
+  } catch (e) {
+    alert('保存失败：本地存储空间可能已满。');
+  }
+}
+
+/* ---------- 编号生成 ---------- */
+function nextCode() {
+  let max = 0;
+  state.items.forEach(it => {
+    const m = /^A(\d+)$/.exec(it.code || '');
+    if (m) max = Math.max(max, parseInt(m[1], 10));
+  });
+  return 'A' + String(max + 1).padStart(3, '0');
+}
+
+/* ---------- 二维码内容 ---------- */
+function qrText(id) { return 'ITEM:' + id; }
+
+function findItemByScan(text) {
+  let key = String(text || '').trim();
+  if (!key) return null;
+  if (key.toUpperCase().startsWith('ITEM:')) key = key.slice(5);
+  return state.items.find(i => i.id === key) || state.items.find(i => i.code === key) || null;
+}
+
+/* ---------- 二维码图片生成（DataURL） ---------- */
+function genQrDataUrl(text, size = 200) {
+  const tmp = document.createElement('div');
+  tmp.style.cssText = 'position:fixed;left:-9999px;top:0';
+  document.body.appendChild(tmp);
+  let url = '';
+  try {
+    new QRCode(tmp, { text, width: size, height: size, correctLevel: QRCode.CorrectLevel.M });
+    const canvas = tmp.querySelector('canvas');
+    if (canvas) url = canvas.toDataURL('image/png');
+  } catch (e) { console.error(e); }
+  document.body.removeChild(tmp);
+  return url;
+}
+
+/* ============================================================
+ *  图片解码优化（新增：Canvas 预处理与 jsQR 兜底）
+ * ============================================================ */
+async function decodeImage(file) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        // 1. 创建 Canvas，将图片缩小到长边不超过 1000px
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        let width = img.width;
+        let height = img.height;
+        const maxSize = 1000;
+        if (width > maxSize || height > maxSize) {
+          if (width > height) {
+            height = Math.round((height * maxSize) / width);
+            width = maxSize;
+          } else {
+            width = Math.round((width * maxSize) / height);
+            height = maxSize;
+          }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        ctx.drawImage(img, 0, 0, width, height);
+
+        // 2. 方案一：使用 jsQR 进行高容错解码
+        const imageData = ctx.getImageData(0, 0, width, height);
+        const code = jsQR(imageData.data, imageData.width, imageData.height, {
+          inversionAttempts: "dontInvert",
+        });
+
+        if (code && code.data) {
+          resolve(code.data);
+          return;
+        }
+
+        // 3. 方案二：jsQR 失败后，退回 html5-qrcode 的 scanFile
+        const tmp = new Html5Qrcode('reader');
+        canvas.toBlob(async (blob) => {
+          const smallFile = new File([blob], file.name, { type: 'image/jpeg' });
+          try {
+            const res = await tmp.scanFile(smallFile, false);
+            tmp.clear();
+            resolve(res);
+          } catch (err) {
+            tmp.clear();
+            resolve(null); // 彻底失败
+          }
+        }, 'image/jpeg', 0.9);
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+/* ============================================================
+ *  渲染：物品列表
+ * ============================================================ */
+function renderItems() {
+  const kw = $('#searchInput').value.trim().toLowerCase();
+  const st = $('#filterStatus').value;
+
+  const list = state.items.filter(it => {
+    if (st !== 'all' && it.status !== st) return false;
+    if (kw) {
+      const blob = [it.name, it.code, it.category, it.spec, it.location, it.remark, it.borrower]
+        .join(' ').toLowerCase();
+      if (!blob.includes(kw)) return false;
+    }
+    return true;
+  });
+
+  const el = $('#itemList');
+  if (!list.length) {
+    el.innerHTML = `<div class="empty"><span class="big">📭</span>${state.items.length ? '没有符合条件的物品' : '暂无物品，点击「添加物品」开始录入'}</div>`;
+  } else {
+    const today = todayStr();
+    el.innerHTML = list.map(it => {
+      const overdue = it.status === 'borrowed' && it.dueDate && it.dueDate < today;
+      return `
+      <div class="item-card ${it.status === 'borrowed' ? 'borrowed' : ''}">
+        <div class="card-top">
+          <span class="code">${esc(it.code)}</span>
+          <span class="badge ${overdue ? 'overdue' : it.status}">
+            ${overdue ? '已逾期' : (it.status === 'available' ? '在库' : '已借出')}
+          </span>
+        </div>
+        <div class="item-name">${esc(it.name)}</div>
+        ${(it.category || it.spec) ? `<div class="item-meta">
+            ${it.category ? `<span class="tag">${esc(it.category)}</span>` : ''}
+            ${it.spec ? `<span class="tag">${esc(it.spec)}</span>` : ''}
+          </div>` : ''}
+        ${it.location ? `<div class="item-loc">📍 ${esc(it.location)}</div>` : ''}
+        ${it.status === 'borrowed'
+          ? `<div class="borrow-info ${overdue ? 'over' : ''}">
+               👤 ${esc(it.borrower)} · 借出 ${esc(it.borrowDate)}
+               ${it.dueDate ? ` · 应还 ${esc(it.dueDate)}` : ''}
+             </div>`
+          : ''}
+        <div class="card-actions">
+          <button class="btn sm" data-act="qr" data-id="${it.id}">二维码</button>
+          <button class="btn sm ${it.status === 'available' ? 'primary' : 'success'}"
+                  data-act="trade" data-id="${it.id}">
+            ${it.status === 'available' ? '借出' : '归还'}
+          </button>
+          <button class="btn sm" data-act="edit" data-id="${it.id}">编辑</button>
+          <button class="btn sm danger" data-act="del" data-id="${it.id}">删除</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  // 统计
+  const total = state.items.length;
+  const avail = state.items.filter(i => i.status === 'available').length;
+  const borrowed = total - avail;
+  const today = todayStr();
+  const over = state.items.filter(i => i.status === 'borrowed' && i.dueDate && i.dueDate < today).length;
+  $('#stats').innerHTML = `共 <b>${total}</b> 件 · 在库 <b>${avail}</b> 件 · 已借出 <b>${borrowed}</b> 件`
+    + (over ? ` · <span class="warn">逾期 ${over} 件</span>` : '');
+}
+
+/* ============================================================
+ *  渲染：借还记录
+ * ============================================================ */
+function renderRecords() {
+  const kw = $('#recordSearch').value.trim().toLowerCase();
+  const list = state.records.filter(r => {
+    if (!kw) return true;
+    return [r.itemName, r.itemCode, r.person, r.remark].join(' ').toLowerCase().includes(kw);
+  }).sort((a, b) => b.time - a.time);
+
+  const body = $('#recordBody');
+  if (!list.length) {
+    body.innerHTML = `<tr><td colspan="8" style="text-align:center;color:#94a3b8;padding:40px">
+      暂无借还记录</td></tr>`;
+    return;
+  }
+  body.innerHTML = list.map(r => `
+    <tr>
+      <td style="color:#64748b;font-size:12.5px;white-space:nowrap">${fmtTime(r.time)}</td>
+      <td><span class="pill ${r.type}">${r.type === 'borrow' ? '借出' : '归还'}</span></td>
+      <td style="font-weight:600">${esc(r.itemName)}</td>
+      <td style="color:#64748b">${esc(r.itemCode || '')}</td>
+      <td>${esc(r.person || '-')}</td>
+      <td style="color:#64748b">${esc(r.dueDate || '-')}</td>
+      <td style="color:#64748b;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+          title="${esc(r.remark || '')}">${esc(r.remark || '-')}</td>
+      <td><button class="btn sm danger" data-recid="${r.id}">删除</button></td>
+    </tr>`).join('');
+}
+
+function renderAll() {
+  renderItems();
+  renderRecords();
+}
+
+/* ============================================================
+ *  模态框
+ * ============================================================ */
+function showModal(innerHtml) {
+  const mask = document.createElement('div');
+  mask.className = 'modal-mask';
+  mask.innerHTML = `<div class="modal">${innerHtml}</div>`;
+  document.body.appendChild(mask);
+
+  const close = () => { mask.remove(); document.removeEventListener('keydown', onKey); };
+  const onKey = e => { if (e.key === 'Escape') close(); };
+  document.addEventListener('keydown', onKey);
+
+  mask.addEventListener('mousedown', e => { if (e.target === mask) close(); });
+  $$('[data-close]', mask).forEach(b => b.addEventListener('click', close));
+
+  const first = mask.querySelector('input,textarea');
+  if (first) setTimeout(() => first.focus(), 60);
+
+  return { mask, close, $: s => mask.querySelector(s) };
+}
+
+/* ---------- 添加 / 编辑物品 ---------- */
+function openItemModal(item) {
+  const isNew = !item;
+  const d = item || { name: '', code: nextCode(), category: '', spec: '', location: '', remark: '' };
+
+  const { close, $: q } = showModal(`
+    <div class="modal-head">
+      <h3>${isNew ? '添加物品' : '编辑物品'}</h3>
+      <button class="icon-btn" data-close>✕</button>
+    </div>
+    <div class="modal-body">
+      <label class="field"><span>物品名称 <b class="req">*</b></span>
+        <input class="input" id="f-name" value="${esc(d.name)}" placeholder="例如：电动螺丝刀"></label>
+      <div class="row">
+        <label class="field"><span>编号</span>
+          <input class="input" id="f-code" value="${esc(d.code)}"></label>
+        <label class="field"><span>分类</span>
+          <input class="input" id="f-category" value="${esc(d.category)}" placeholder="工具 / 器材"></label>
+      </div>
+      <div class="row">
+        <label class="field"><span>规格型号</span>
+          <input class="input" id="f-spec" value="${esc(d.spec)}" placeholder="选填"></label>
+        <label class="field"><span>存放位置</span>
+          <input class="input" id="f-location" value="${esc(d.location)}" placeholder="如：A区-3号柜"></label>
+      </div>
+      <label class="field"><span>备注</span>
+        <textarea class="input" id="f-remark" rows="2" placeholder="选填">${esc(d.remark)}</textarea></label>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" data-close>取消</button>
+      <button class="btn primary" id="f-save">保存</button>
+    </div>
+  `);
+
+  q('#f-save').addEventListener('click', () => {
+    const name = q('#f-name').value.trim();
+    if (!name) { toast('请填写物品名称', 'err'); q('#f-name').focus(); return; }
+
+    const payload = {
+      name,
+      code: q('#f-code').value.trim() || nextCode(),
+      category: q('#f-category').value.trim(),
+      spec: q('#f-spec').value.trim(),
+      location: q('#f-location').value.trim(),
+      remark: q('#f-remark').value.trim(),
+    };
+
+    if (isNew) {
+      state.items.push({
+        id: uid(), ...payload, status: 'available',
+        borrower: '', borrowDate: '', dueDate: '', borrowRemark: '',
+        createdAt: Date.now()
+      });
+      toast('物品已添加', 'ok');
+    } else {
+      Object.assign(item, payload);
+      toast('修改已保存', 'ok');
+    }
+    saveData(); renderAll(); close();
+  });
+}
+
+/* ---------- 二维码弹窗 ---------- */
+function openQrModal(item) {
+  const { close, $: q } = showModal(`
+    <div class="modal-head">
+      <h3>物品二维码</h3>
+      <button class="icon-btn" data-close>✕</button>
+    </div>
+    <div class="modal-body qr-body">
+      <div id="qrBox" class="qr-box"></div>
+      <div class="qr-name">${esc(item.name)}</div>
+      <div class="qr-code">编号：${esc(item.code)}</div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" id="qr-download">下载图片</button>
+      <button class="btn primary" id="qr-print">打印标签</button>
+    </div>
+  `);
+
+  if (typeof QRCode === 'undefined') {
+    q('#qrBox').innerHTML = '<p style="color:#ef4444;padding:20px">二维码库未加载，请联网后刷新页面</p>';
+    return;
+  }
+
+  new QRCode(q('#qrBox'), {
+    text: qrText(item.id),
+    width: 200, height: 200,
+    correctLevel: QRCode.CorrectLevel.M
+  });
+
+  q('#qr-download').addEventListener('click', () => {
+    const canvas = q('#qrBox').querySelector('canvas');
+    if (!canvas) return;
+    const a = document.createElement('a');
+    a.href = canvas.toDataURL('image/png');
+    a.download = `二维码_${item.code}_${item.name}.png`;
+    a.click();
+  });
+
+  q('#qr-print').addEventListener('click', () => printLabels([item]));
+}
+
+/* ============================================================
+ *  借出 / 归还
+ * ============================================================ */
+function openTradeModal(item) {
+  const isBorrow = item.status === 'available';
+  const today = todayStr();
+
+  if (isBorrow) {
+    const defaultDue = todayStr(new Date(Date.now() + 30 * 864e5));
+    const { close, $: q } = showModal(`
+      <div class="modal-head">
+        <h3>📤 借出物品</h3>
+        <button class="icon-btn" data-close>✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="item-brief">
+          <div class="n">${esc(item.name)}</div>
+          <div class="m">编号 ${esc(item.code)}${item.location ? ' · 📍' + esc(item.location) : ''}</div>
+        </div>
+        <label class="field"><span>借用人 <b class="req">*</b></span>
+          <input class="input" id="m-borrower" placeholder="雷瑞利"></label>
+        <label class="field"><span>预计归还日期</span>
+          <input class="input" type="date" id="m-due" value="${defaultDue}"></label>
+        <label class="field"><span>备注</span>
+          <textarea class="input" id="m-remark" rows="2" placeholder="选填"></textarea></label>
+      </div>
+      <div class="modal-foot">
+        <button class="btn" data-close>取消</button>
+        <button class="btn primary" id="m-ok">确认借出</button>
+      </div>
+    `);
+
+    q('#m-ok').addEventListener('click', () => {
+      const borrower = q('#m-borrower').value.trim();
+      if (!borrower) { toast('请填写借用人', 'err'); q('#m-borrower').focus(); return; }
+
+      item.status = 'borrowed';
+      item.borrower = borrower;
+      item.borrowDate = todayStr();
+      item.dueDate = q('#m-due').value || '';
+      item.borrowRemark = q('#m-remark').value.trim();
+
+      state.records.push({
+        id: uid(), itemId: item.id, itemName: item.name, itemCode: item.code,
+        type: 'borrow', person: borrower, time: Date.now(),
+        dueDate: item.dueDate, remark: item.borrowRemark
+      });
+
+      saveData(); renderAll(); close();
+      toast(`「${item.name}」已借出给 ${borrower}`, 'ok');
+    });
+
+  } else {
+    const overdue = item.dueDate && item.dueDate < today;
+    const { close, $: q } = showModal(`
+      <div class="modal-head">
+        <h3>📥 归还物品</h3>
+        <button class="icon-btn" data-close>✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="item-brief">
+          <div class="n">${esc(item.name)}</div>
+          <div class="m">
+            编号 ${esc(item.code)}<br>
+            借用人：<b>${esc(item.borrower)}</b> · 借出日期：${esc(item.borrowDate)}
+            ${item.dueDate ? `<br>应还日期：<span style="color:${overdue ? '#dc2626' : '#64748b'}">${esc(item.dueDate)}${overdue ? '（已逾期）' : ''}</span>` : ''}
+          </div>
+        </div>
+        <label class="field"><span>归还备注</span>
+          <textarea class="input" id="m-remark" rows="2" placeholder="选填，如：外观完好 / 有轻微磨损"></textarea></label>
+      </div>
+      <div class="modal-foot">
+        <button class="btn" data-close>取消</button>
+        <button class="btn success" id="m-ok">确认归还</button>
+      </div>
+    `);
+
+    q('#m-ok').addEventListener('click', () => {
+      const remark = q('#m-remark').value.trim();
+      const borrower = item.borrower;
+
+      state.records.push({
+        id: uid(), itemId: item.id, itemName: item.name, itemCode: item.code,
+        type: 'return', person: borrower, time: Date.now(),
+        dueDate: item.dueDate || '', remark
+      });
+
+      item.status = 'available';
+      item.borrower = '';
+      item.borrowDate = '';
+      item.dueDate = '';
+      item.borrowRemark = '';
+
+      saveData(); renderAll(); close();
+      toast(`「${item.name}」已归还入库`, 'ok');
+    });
+  }
+}
+
+/* ============================================================
+ *  打印标签
+ * ============================================================ */
+function printLabels(items) {
+  if (!items.length) { toast('没有可打印的物品', 'err'); return; }
+  if (typeof QRCode === 'undefined') { toast('二维码库未加载，请联网刷新', 'err'); return; }
+
+  const labels = items.map(it => {
+    const url = genQrDataUrl(qrText(it.id), 220);
+    return `<div class="label">
+      <img src="${url}" alt="qr">
+      <div class="l-name">${esc(it.name)}</div>
+      <div class="l-code">${esc(it.code)}</div>
+    </div>`;
+  }).join('');
+
+  const win = window.open('', '_blank');
+  if (!win) { toast('请允许浏览器弹出窗口', 'err'); return; }
+
+  win.document.write(`<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">
+  <title>打印二维码标签</title>
+  <style>
+    @page { margin: 8mm; }
+    body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; margin: 0; }
+    .label { display:inline-flex; flex-direction:column; align-items:center; justify-content:center;
+             width:42mm; height:34mm; border:1px dashed #cbd5e1; margin:2mm;
+             page-break-inside:avoid; vertical-align:top; overflow:hidden; }
+    .label img { width:20mm; height:20mm; }
+    .l-name { font-size:9pt; font-weight:700; margin-top:1mm; max-width:38mm;
+              text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .l-code { font-size:8pt; color:#64748b; }
+    @media print { .label { border-color:#e2e8f0; } }
+  </style></head><body>${labels}</body></html>`);
+  win.document.close();
+  setTimeout(() => { win.focus(); win.print(); }, 500);
+}
+
+/* ============================================================
+ *  扫码
+ * ============================================================ */
+let scanner = null;
+let isScanning = false;
+let scanLock = false;
+
+function updateScanButtons() {
+  $('#btnStartScan').disabled = isScanning;
+  $('#btnStopScan').disabled = !isScanning;
+}
+
+async function startScan() {
+  if (isScanning) return;
+  if (typeof Html5Qrcode === 'undefined') {
+    toast('扫码库未加载，请联网后刷新页面', 'err');
+    return;
+  }
+  scanner = new Html5Qrcode('reader');
+  try {
+    await scanner.start(
+      { facingMode: 'environment' },
+      { fps: 10, qrbox: { width: 240, height: 240 } },
+      onScanSuccess,
+      () => {}   // 忽略逐帧识别失败
+    );
+    isScanning = true;
+    updateScanButtons();
+  } catch (err) {
+    console.error(err);
+    scanner = null;
+    toast('无法启动摄像头，请查看下方提示', 'err');
+    alert('无法启动摄像头。\n\n常见原因：浏览器在「直接打开本地 HTML 文件」时会禁用摄像头权限。\n\n解决方案：\n1) 在文件目录下运行：python -m http.server 8000\n   然后浏览器访问 http://localhost:8000\n2) 或使用 USB 扫码枪 / 手动输入编号。');
+  }
+}
+
+async function stopScan() {
+  if (!isScanning || !scanner) return;
+  try {
+    await scanner.stop();
+    scanner.clear();
+  } catch (e) { /* 忽略 */ }
+  isScanning = false;
+  scanner = null;
+  updateScanButtons();
+}
+
+async function onScanSuccess(text) {
+  if (scanLock) return;
+  scanLock = true;
+  await stopScan();
+
+  const item = findItemByScan(text);
+  if (!item) {
+    toast('未找到对应物品：' + text.slice(0, 30), 'err');
+    alert('未找到对应物品。\n扫描内容：' + text + '\n\n请确认该物品已在「物品列表」中录入。');
+  } else {
+    openTradeModal(item);
+  }
+  scanLock = false;
+}
+
+/* ============================================================
+ *  事件绑定
+ * ============================================================ */
+function bindEvents() {
+  /* --- Tab 切换 --- */
+  $$('.tab').forEach(btn => btn.addEventListener('click', () => {
+    $$('.tab').forEach(b => b.classList.toggle('active', b === btn));
+    $$('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + btn.dataset.tab));
+    if (btn.dataset.tab !== 'scan') stopScan();
+  }));
+
+  /* --- 物品列表 --- */
+  $('#searchInput').addEventListener('input', renderItems);
+  $('#filterStatus').addEventListener('change', renderItems);
+  $('#btnAddItem').addEventListener('click', () => openItemModal(null));
+  $('#btnPrintAll').addEventListener('click', () => {
+    if (!state.items.length) { toast('还没有物品可以打印', 'err'); return; }
+    printLabels(state.items);
+  });
+
+  $('#itemList').addEventListener('click', e => {
+    const btn = e.target.closest('button[data-act]');
+    if (!btn) return;
+    const item = state.items.find(i => i.id === btn.dataset.id);
+    if (!item) return;
+
+    switch (btn.dataset.act) {
+      case 'qr':    openQrModal(item); break;
+      case 'trade': openTradeModal(item); break;
+      case 'edit':  openItemModal(item); break;
+      case 'del':
+        if (confirm(`确定删除「${item.name}」吗？\n删除后该物品的二维码将失效。`)) {
+          state.items = state.items.filter(i => i.id !== item.id);
+          saveData(); renderAll();
+          toast('已删除', 'ok');
+        }
+        break;
+    }
+  });
+
+  /* --- 扫码页 --- */
+  $('#btnStartScan').addEventListener('click', startScan);
+  $('#btnStopScan').addEventListener('click', stopScan);
+  $('#btnScanFile').addEventListener('click', () => $('#qrFile').click());
+
+  // 替换为调用优化的解码函数
+  $('#qrFile').addEventListener('change', async e => {
+    const file = e.target.files[0];
+    e.target.value = ''; // 清空，允许重复选择同一文件
+    if (!file) return;
+    
+    toast('正在解析图片，请稍候...', '');
+    
+    const res = await decodeImage(file);
+    
+    if (res) {
+      const item = findItemByScan(res);
+      if (item) {
+        openTradeModal(item);
+      } else {
+        alert('识别成功，但未找到对应物品。\n识别内容：' + res);
+      }
+    } else {
+      toast('图片未识别出二维码，请确保二维码清晰无遮挡', 'err');
+    }
+  });
+
+  $('#btnManual').addEventListener('click', handleManual);
+  $('#manualInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') handleManual();   // 扫码枪通常以回车结尾
+  });
+
+  function handleManual() {
+    const v = $('#manualInput').value.trim();
+    if (!v) { toast('请输入编号', 'err'); return; }
+    const item = findItemByScan(v);
+    if (item) {
+      $('#manualInput').value = '';
+      openTradeModal(item);
+    } else {
+      toast('未找到编号为「' + v + '」的物品', 'err');
+    }
+  }
+
+  /* --- 记录页 --- */
+  $('#recordSearch').addEventListener('input', renderRecords);
+  $('#btnClearRecords').addEventListener('click', () => {
+    if (!state.records.length) { toast('暂无记录', 'err'); return; }
+    if (confirm('确定清空全部借还记录吗？此操作不可恢复（物品信息不受影响）。')) {
+      state.records = [];
+      saveData(); renderRecords();
+      toast('记录已清空', 'ok');
+    }
+  });
+  $('#recordBody').addEventListener('click', e => {
+    const btn = e.target.closest('button[data-recid]');
+    if (!btn) return;
+    state.records = state.records.filter(r => r.id !== btn.dataset.recid);
+    saveData(); renderRecords();
+    toast('记录已删除', 'ok');
+  });
+
+  /* --- 导入导出 --- */
+  $('#btnExport').addEventListener('click', () => {
+    const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `物品借还备份_${todayStr()}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    toast('备份已导出', 'ok');
+  });
+
+  $('#btnImport').addEventListener('click', () => $('#importFile').click());
+  $('#importFile').addEventListener('change', e => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const d = JSON.parse(ev.target.result);
+        if (!d || !Array.isArray(d.items)) throw new Error('格式不正确');
+        if (!confirm(`即将导入 ${d.items.length} 件物品、${(d.records || []).length} 条记录。\n\n「确定」= 覆盖当前数据\n「取消」= 放弃导入`)) return;
+        state.items = d.items;
+        state.records = Array.isArray(d.records) ? d.records : [];
+        saveData(); renderAll();
+        toast('导入成功', 'ok');
+      } catch (err) {
+        alert('导入失败：文件格式不正确。');
+      }
+    };
+    reader.readAsText(file);
+  });
+}
+
+/* ============================================================
+ *  初始化
+ * ============================================================ */
+(function init() {
+  loadData();
+  bindEvents();
+  renderAll();
+  updateScanButtons();
+
+  if (typeof QRCode === 'undefined') {
+    setTimeout(() => toast('二维码库加载失败，请检查网络后刷新', 'err'), 800);
+  }
+})();
+</script>
+</body>
+</html>
