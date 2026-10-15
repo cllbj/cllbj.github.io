@@ -96,8 +96,16 @@ input,select,textarea{font-family:inherit;font-size:14px}
 /* 扫码页 */
 .scan-wrap{background:#fff;border-radius:14px;padding:20px;border:1px solid var(--border);
   max-width:640px;margin:0 auto;box-shadow:0 1px 3px rgba(15,23,42,.05)}
-.reader{width:100%;border-radius:12px;overflow:hidden;background:#0f172a;min-height:0;margin-bottom:14px}
-.reader:empty{display:none}
+.reader { 
+  width: 100%; 
+  border-radius: 12px; 
+  overflow: hidden; 
+  background: #0f172a; 
+  /* 必须给一个最小高度，否则摄像头视频流会被压缩为0高度不可见 */
+  min-height: 280px; 
+  margin-bottom: 14px; 
+}
+
 .scan-controls{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
 .divider{text-align:center;color:var(--muted);font-size:13px;margin:18px 0;position:relative}
 .divider::before,.divider::after{content:'';position:absolute;top:50%;width:38%;height:1px;background:var(--border)}
@@ -782,11 +790,20 @@ async function startScan() {
   scanner = new Html5Qrcode('reader');
   try {
     await scanner.start(
-      { facingMode: 'environment' },
-      { fps: 10, qrbox: { width: 240, height: 240 } },
-      onScanSuccess,
-      () => {}   // 忽略逐帧识别失败
-    );
+  { facingMode: 'environment' },
+  { 
+    fps: 10, 
+    // 让扫描框根据屏幕实际大小自适应，避免固定240在部分手机上溢出或太小
+    qrbox: function(viewfinderWidth, viewfinderHeight) {
+      let minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+      let qrboxSize = Math.floor(minEdge * 0.75);
+      return { width: qrboxSize, height: qrboxSize };
+    },
+    aspectRatio: 1.0 // 强制摄像头输出方形比例，方便渲染
+  },
+  onScanSuccess,
+  () => {}   // 忽略逐帧识别失败
+);
     isScanning = true;
     updateScanButtons();
   } catch (err) {
