@@ -8,6 +8,8 @@
 <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <!-- 新增：jsQR 高容错解码库，专门处理手机翻拍的照片 -->
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
 <style>
 :root{
   --primary:#2563eb; --primary-d:#1d4ed8; --success:#10b981; --success-d:#059669;
@@ -100,16 +102,18 @@ input,select,textarea{font-family:inherit;font-size:14px}
   width: 100%; 
   border-radius: 12px; 
   overflow: hidden; 
-  background: #0f172a; 
-  min-height: 280px; 
   margin-bottom: 14px; 
-  /* 新增：默认隐藏 */
-  display: none; 
+  /* 以下是核心：默认彻底隐藏，不占空间，不留底色 */
+  display: none !important; 
+  min-height: 0; 
+  background: transparent; 
 }
 
-/* 新增：当加上 active 类时才显示 */
-.reader.active {
-  display: block; 
+/* 只有在点击开始扫码后，才显示黑底和高度 */
+.reader.active { 
+  display: block !important; 
+  min-height: 280px; 
+  background: #0f172a; 
 }
 
 .scan-controls{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
@@ -296,25 +300,34 @@ function toast(msg, type = '') {
   }, 2000);
 }
 
-/* ---------- 数据持久化 ---------- */
-function loadData() {
+/* ---------- 数据持久化 (Supabase 云端) ---------- */
+const SUPABASE_URL = 'https://glbrmiyrivvqfxylnljv.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_XCRQOfrAwVgei5qhV16Ahg__qbBb6iD';
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const DB_ROW_ID = 'main_data';
+
+async function loadData() {
   try {
-    const raw = localStorage.getItem(STORE_KEY);
-    if (raw) {
-      const d = JSON.parse(raw);
-      state.items = Array.isArray(d.items) ? d.items : [];
-      state.records = Array.isArray(d.records) ? d.records : [];
+    const { data, error } = await supabaseClient.from('app_data').select('*').eq('id', DB_ROW_ID).single();
+    if (error && error.code !== 'PGRST116') throw error;
+    if (data) {
+      state.items = Array.isArray(data.items) ? data.items : [];
+      state.records = Array.isArray(data.records) ? data.records : [];
     }
   } catch (e) {
-    console.error('读取数据失败', e);
-    state = { items: [], records: [] };
+    console.error('云端读取失败', e);
   }
 }
-function saveData() {
+
+async function saveData() {
   try {
-    localStorage.setItem(STORE_KEY, JSON.stringify(state));
+    const { error } = await supabaseClient.from('app_data').upsert({ 
+      id: DB_ROW_ID, items: state.items, records: state.records, updated_at: new Date() 
+    });
+    if (error) throw error;
   } catch (e) {
-    alert('保存失败：本地存储空间可能已满。');
+    console.error('保存失败', e);
+    toast('保存到云端失败！', 'err');
   }
 }
 
@@ -988,14 +1001,13 @@ function bindEvents() {
  *  初始化
  * ============================================================ */
 (function init() {
-  loadData();
   bindEvents();
-  renderAll();
   updateScanButtons();
-
-  if (typeof QRCode === 'undefined') {
-    setTimeout(() => toast('二维码库加载失败，请检查网络后刷新', 'err'), 800);
-  }
+  
+  // 先去云端拿数据，拿完了再画界面
+  loadData().then(() => {
+    renderAll();
+  });
 })();
 </script>
 </body>
