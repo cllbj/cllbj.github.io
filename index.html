@@ -4,16 +4,21 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>物品借还管理工具</title>
-<!-- 加上捕获错误的全局提示，一旦有报错直接弹窗 -->
+<!-- 加上捕获错误的全局提示 -->
 <script>
   window.onerror = function(msg) {
-    alert("系统提示：代码运行出错，请检查网络或刷新。\n错误信息：" + msg);
+    console.error("系统报错:", msg);
+    if(msg.includes('ReferenceError')) {
+      alert("网络较慢，核心组件加载失败，请刷新页面重试！\n错误信息：" + msg);
+    }
   };
 </script>
-<script src="https://cdn.jsdelivr.net/npm/qrcodejs2@0.0.2/qrcode.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<!-- 国内稳定 CDN 节点 -->
+<script src="https://cdn.bootcdn.net/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdn.bootcdn.net/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdn.bootcdn.net/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 
 <style>
 :root{
@@ -353,7 +358,7 @@ input,select,textarea{font-family:inherit;font-size:14px}
 /* ============================================================
  *  配置区
  * ============================================================ */
-const SUPER_ADMIN_PHONE = '15991972976';   // ← 请改成你自己的手机号
+const SUPER_ADMIN_PHONE = '13800138000';   // ← 请改成你自己的手机号
 const PUBLIC_BASE       = 'https://cllbj.github.io/';
 
 /* ============================================================
@@ -415,10 +420,20 @@ async function hashPwd(phone, pwd) {
  * ============================================================ */
 const SUPABASE_URL = 'https://glbrmiyrivvqfxylnljv.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdsYnJtaXlyaXZ2cWZ4eWxubGp2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIzMDA1MDcsImV4cCI6MjEwNzg3NjUwN30.Toz-vYXu_75SOP_BxSDInhTcod0mIg1z3BPlpO7xmYM';
-const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const DB_ROW_ID = 'main_data';
 
+let supabaseClient = null;
+if (typeof supabase !== 'undefined') {
+  supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+} else {
+  console.error('Supabase 库未加载');
+}
+
 async function loadData() {
+  if (!supabaseClient) {
+    toast('核心组件加载失败，请刷新', 'err');
+    return;
+  }
   try {
     const { data, error } = await supabaseClient.from('app_data').select('*').eq('id', DB_ROW_ID).single();
     if (error && error.code !== 'PGRST116') throw error;
@@ -436,6 +451,10 @@ async function loadData() {
 }
 
 async function saveData() {
+  if (!supabaseClient) {
+    toast('核心组件加载失败，无法保存', 'err');
+    return false;
+  }
   if (!dataLoaded) {
     toast('云端未连接，为保护数据已阻止保存', 'err');
     return false;
@@ -448,7 +467,7 @@ async function saveData() {
     return true;
   } catch (e) {
     console.error('保存失败', e);
-    toast('保存到云端失败！', 'err');
+    toast('保存失败：' + (e.message || e.details || '网络异常'), 'err');
     return false;
   }
 }
@@ -1063,11 +1082,10 @@ async function submitReturn(itemId, remark) {
 }
 
 /* ============================================================
- *  审批
+ *  审批（已优化为秒响应）
  * ============================================================ */
 async function approveRecord(recordId) {
   if (!currentUser?.isAdmin) return;
-  await refreshData();
   const rec = state.records.find(r => r.id === recordId);
   if (!rec || rec.status !== 'pending') { toast('该申请已处理', 'err'); renderAll(); return; }
   const item = state.items.find(i => i.id === rec.itemId);
@@ -1091,14 +1109,14 @@ async function approveRecord(recordId) {
   rec.reviewedBy = currentUser.name;
   rec.reviewedAt = Date.now();
 
-  await saveData();
   renderAll();
   toast('已通过审批', 'ok');
+  
+  await saveData();
 }
 
 async function rejectRecord(recordId) {
   if (!currentUser?.isAdmin) return;
-  await refreshData();
   const rec = state.records.find(r => r.id === recordId);
   if (!rec || rec.status !== 'pending') { toast('该申请已处理', 'err'); renderAll(); return; }
   const item = state.items.find(i => i.id === rec.itemId);
@@ -1113,25 +1131,24 @@ async function rejectRecord(recordId) {
   rec.reviewedBy = currentUser.name;
   rec.reviewedAt = Date.now();
 
-  await saveData();
   renderAll();
   toast('已拒绝申请', 'ok');
+  
+  await saveData();
 }
 
 async function approveUser(userId) {
   if (!currentUser?.isAdmin) return;
-  await refreshData();
   const u = state.users.find(x => x.id === userId);
   if (!u) return;
   u.status = 'approved';
-  await saveData();
   renderAll();
   toast('用户已通过审核', 'ok');
+  await saveData();
 }
 
 async function rejectUser(userId) {
   if (!currentUser?.isAdmin) return;
-  await refreshData();
   const u = state.users.find(x => x.id === userId);
   if (!u) return;
   if (u.isAdmin && u.phone === SUPER_ADMIN_PHONE) {
@@ -1139,9 +1156,9 @@ async function rejectUser(userId) {
     return;
   }
   u.status = 'rejected';
-  await saveData();
   renderAll();
   toast('用户已拒绝/禁用', 'ok');
+  await saveData();
 }
 
 /* ============================================================
@@ -1316,7 +1333,6 @@ async function doRegister() {
   const pwd   = $('#regPwd').value;
   const pwd2  = $('#regPwd2').value;
 
-  // 前端拦截
   if (!/^1[3-9]\d{9}$/.test(phone)) return toast('手机号格式不正确，请填写 11 位手机号', 'err');
   if (!name) return toast('请填写姓名', 'err');
   if (pwd.length < 4) return toast('密码至少 4 位', 'err');
@@ -1342,14 +1358,13 @@ async function doRegister() {
     });
 
     const ok = await saveData();
-    if (!ok) throw new Error('保存到云端失败，请检查网络');
+    if (!ok) return;
 
     toast(isAdmin ? '管理员创建成功，请登录' : '注册成功，请等待管理员审核', 'ok');
     switchLoginTab('login');
     $('#loginPhone').value = phone;
     $('#loginPwd').value = '';
     
-    // 清空表单
     $('#regPhone').value = ''; $('#regName').value = ''; $('#regDept').value = ''; 
     $('#regPwd').value = ''; $('#regPwd2').value = '';
 
