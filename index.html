@@ -1046,6 +1046,32 @@ async function submitBorrow(itemId, dueDate, remark) {
   }
 
   const me = currentUser;
+  
+  // 【管理员直接借出，不走审批】
+  if (me.isAdmin) {
+    item.status = 'borrowed';
+    item.borrower = me.name;
+    item.borrowerId = me.id;
+    item.borrowDate = todayStr();
+    item.dueDate = dueDate || '';
+    item.borrowRemark = remark || '';
+    
+    delete item.lockBy; delete item.lockByName; delete item.lockAt; delete item.pendingDueDate;
+
+    state.records.push({
+      id: uid(), itemId: item.id, itemName: item.name, itemCode: item.code,
+      type: 'borrow', person: me.name, personId: me.id, personPhone: me.phone,
+      time: Date.now(), dueDate, remark, status: 'approved',
+      reviewedBy: me.name, reviewedAt: Date.now()
+    });
+
+    const ok = await saveData();
+    renderAll();
+    if (ok) toast('管理员操作：已直接借出', 'ok');
+    return;
+  }
+
+  // 【普通用户走审批】
   item.status = 'pending_borrow';
   item.lockBy = me.id;
   item.lockByName = me.name;
@@ -1074,6 +1100,29 @@ async function submitReturn(itemId, remark) {
   }
 
   const me = currentUser;
+
+  // 【管理员直接归还，不走审批】
+  if (me.isAdmin) {
+    item.status = 'available';
+    item.borrower = ''; item.borrowerId = ''; item.borrowDate = '';
+    item.dueDate = ''; item.borrowRemark = '';
+    
+    delete item.lockBy; delete item.lockByName; delete item.lockAt; delete item.pendingDueDate;
+
+    state.records.push({
+      id: uid(), itemId: item.id, itemName: item.name, itemCode: item.code,
+      type: 'return', person: me.name, personId: me.id, personPhone: me.phone,
+      time: Date.now(), dueDate: item.dueDate || '', remark, status: 'approved',
+      reviewedBy: me.name, reviewedAt: Date.now()
+    });
+
+    const ok = await saveData();
+    renderAll();
+    if (ok) toast('管理员操作：已直接归还入库', 'ok');
+    return;
+  }
+
+  // 【普通用户走审批】
   item.status = 'pending_return';
   item.lockBy = me.id;
   item.lockByName = me.name;
