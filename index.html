@@ -4,9 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>物品借还管理工具</title>
+<!-- 加上捕获错误的全局提示，一旦有报错直接弹窗 -->
+<script>
+  window.onerror = function(msg) {
+    alert("系统提示：代码运行出错，请检查网络或刷新。\n错误信息：" + msg);
+  };
+</script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs2@0.0.2/qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-<!-- 新增：jsQR 高容错解码库，专门处理手机翻拍的照片 -->
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
@@ -29,9 +34,12 @@ input,select,textarea{font-family:inherit;font-size:14px}
 .brand{display:flex;align-items:center;gap:10px}
 .brand .logo{font-size:24px}
 .brand h1{font-size:18px;font-weight:700;letter-spacing:.5px}
-.header-actions{display:flex;gap:8px;flex-wrap:wrap}
+.header-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .header-actions .btn{background:rgba(255,255,255,.18);color:#fff;border:1px solid rgba(255,255,255,.3)}
 .header-actions .btn:hover{background:rgba(255,255,255,.3)}
+.user-chip{font-size:13px;background:rgba(255,255,255,.18);padding:6px 12px;border-radius:20px;
+  border:1px solid rgba(255,255,255,.3);display:flex;align-items:center;gap:8px}
+.user-chip b{font-weight:700}
 
 .tabs{display:flex;gap:6px;margin:18px 0 14px;background:#fff;padding:6px;border-radius:12px;
   box-shadow:0 1px 3px rgba(15,23,42,.06);overflow-x:auto}
@@ -74,6 +82,7 @@ input,select,textarea{font-family:inherit;font-size:14px}
   transition:.2s;position:relative;overflow:hidden}
 .item-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--success)}
 .item-card.borrowed::before{background:var(--warning)}
+.item-card.pending::before{background:#3b82f6}
 .item-card:hover{box-shadow:0 6px 18px rgba(15,23,42,.1);transform:translateY(-2px)}
 .card-top{display:flex;justify-content:space-between;align-items:center}
 .code{font-size:12px;font-weight:700;color:var(--muted);background:#f1f5f9;
@@ -81,6 +90,7 @@ input,select,textarea{font-family:inherit;font-size:14px}
 .badge{font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:20px}
 .badge.available{background:#dcfce7;color:#15803d}
 .badge.borrowed{background:#fef3c7;color:#b45309}
+.badge.pending{background:#dbeafe;color:#1d4ed8}
 .badge.overdue{background:#fee2e2;color:#b91c1c}
 .item-name{font-size:16px;font-weight:700;line-height:1.3;word-break:break-all}
 .item-meta{display:flex;flex-wrap:wrap;gap:5px}
@@ -89,33 +99,20 @@ input,select,textarea{font-family:inherit;font-size:14px}
 .borrow-info{font-size:12.5px;color:#b45309;background:#fffbeb;padding:6px 9px;
   border-radius:7px;border:1px solid #fef3c7}
 .borrow-info.over{color:#b91c1c;background:#fef2f2;border-color:#fecaca}
+.borrow-info.pend{color:#1d4ed8;background:#eff6ff;border-color:#bfdbfe}
 .card-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:auto;padding-top:6px;
   border-top:1px dashed var(--border)}
 
 .empty{grid-column:1/-1;text-align:center;color:var(--muted);padding:50px 20px;font-size:14px}
 .empty .big{font-size:40px;display:block;margin-bottom:10px;opacity:.5}
+.empty-sm{text-align:center;color:var(--muted);padding:20px;font-size:13px}
 
 /* 扫码页 */
 .scan-wrap{background:#fff;border-radius:14px;padding:20px;border:1px solid var(--border);
   max-width:640px;margin:0 auto;box-shadow:0 1px 3px rgba(15,23,42,.05)}
-.reader { 
-  width: 100%; 
-  border-radius: 12px; 
-  overflow: hidden; 
-  margin-bottom: 14px; 
-  /* 以下是核心：默认彻底隐藏，不占空间，不留底色 */
-  display: none !important; 
-  min-height: 0; 
-  background: transparent; 
-}
-
-/* 只有在点击开始扫码后，才显示黑底和高度 */
-.reader.active { 
-  display: block !important; 
-  min-height: 280px; 
-  background: #0f172a; 
-}
-
+.reader{width:100%;border-radius:12px;overflow:hidden;margin-bottom:14px;
+  display:none !important;min-height:0;background:transparent}
+.reader.active{display:block !important;min-height:280px;background:#0f172a}
 .scan-controls{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
 .divider{text-align:center;color:var(--muted);font-size:13px;margin:18px 0;position:relative}
 .divider::before,.divider::after{content:'';position:absolute;top:50%;width:38%;height:1px;background:var(--border)}
@@ -127,7 +124,7 @@ input,select,textarea{font-family:inherit;font-size:14px}
 
 /* 记录表 */
 .table-wrap{background:#fff;border-radius:13px;border:1px solid var(--border);overflow:auto}
-.table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:760px}
+.table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:860px}
 .table th{background:#f8fafc;color:var(--muted);font-weight:600;text-align:left;
   padding:11px 14px;border-bottom:1px solid var(--border);font-size:12.5px;white-space:nowrap}
 .table td{padding:11px 14px;border-bottom:1px solid #f1f5f9;vertical-align:middle}
@@ -136,6 +133,9 @@ input,select,textarea{font-family:inherit;font-size:14px}
 .pill{font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:20px;white-space:nowrap}
 .pill.borrow{background:#fef3c7;color:#b45309}
 .pill.return{background:#dcfce7;color:#15803d}
+.pill.pending{background:#dbeafe;color:#1d4ed8}
+.pill.approved{background:#dcfce7;color:#15803d}
+.pill.rejected{background:#fee2e2;color:#b91c1c}
 
 /* 模态框 */
 .modal-mask{position:fixed;inset:0;background:rgba(15,23,42,.55);backdrop-filter:blur(2px);
@@ -172,11 +172,35 @@ input,select,textarea{font-family:inherit;font-size:14px}
 .qr-code{font-size:13px;color:var(--muted)}
 .toast{position:fixed;left:50%;bottom:36px;transform:translateX(-50%) translateY(20px);
   background:#0f172a;color:#fff;padding:11px 22px;border-radius:10px;font-size:14px;
-  font-weight:600;opacity:0;transition:.3s;z-index:2000;pointer-events:none;
-  box-shadow:0 8px 24px rgba(15,23,42,.35)}
+  font-weight:600;opacity:0;transition:.3s;z-index:99999;pointer-events:none;
+  box-shadow:0 8px 24px rgba(15,23,42,.35);max-width:88vw;text-align:center}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 .toast.ok{background:#059669}
 .toast.err{background:#dc2626}
+
+/* 管理页 */
+.admin-section{background:#fff;border-radius:13px;border:1px solid var(--border);
+  padding:16px 18px;margin-bottom:14px}
+.admin-section h2{font-size:15px;font-weight:700;margin-bottom:12px;color:var(--text)}
+.admin-card{display:flex;justify-content:space-between;align-items:center;gap:12px;
+  padding:12px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;
+  background:#fafbfc;flex-wrap:wrap}
+.admin-card .muted{color:var(--muted);font-size:12.5px}
+.admin-actions{display:flex;gap:6px;flex-shrink:0}
+
+/* 登录页 */
+.login-page{position:fixed;inset:0;background:linear-gradient(135deg,#2563eb,#4f46e5);
+  display:flex;align-items:center;justify-content:center;z-index:3000;padding:16px;overflow-y:auto;}
+.login-box{background:#fff;border-radius:18px;padding:28px 26px;width:100%;max-width:380px;
+  box-shadow:0 20px 60px rgba(0,0,0,.3);animation:pop .3s ease;margin:auto;}
+.login-brand{font-size:20px;font-weight:700;text-align:center;margin-bottom:20px;color:var(--text)}
+.login-tabs{display:flex;gap:6px;background:#f1f5f9;padding:5px;border-radius:10px;margin-bottom:20px}
+.login-tab{flex:1;padding:8px;border-radius:7px;font-size:14px;font-weight:600;color:var(--muted);transition:.18s}
+.login-tab.active{background:#fff;color:var(--primary);box-shadow:0 1px 4px rgba(0,0,0,.08)}
+.login-form{display:flex;flex-direction:column;gap:12px}
+.login-form label{display:flex;flex-direction:column;gap:5px;font-size:13px;font-weight:600;color:#475569}
+.login-tip{font-size:12px;color:var(--muted);text-align:center;margin-top:14px;line-height:1.6}
+.login-tip code{background:#f1f5f9;padding:1px 5px;border-radius:4px}
 
 @media (max-width:560px){
   .app{padding:12px 12px 50px}
@@ -184,16 +208,67 @@ input,select,textarea{font-family:inherit;font-size:14px}
   .item-grid{grid-template-columns:1fr}
   .toolbar select.input{flex:1}
   .row{flex-direction:column}
+  .admin-card{flex-direction:column;align-items:stretch}
+  .admin-actions{justify-content:flex-end}
 }
 </style>
 </head>
 <body>
-<div class="app">
+
+<!-- ============ 登录页 ============ -->
+<div class="login-page" id="loginPage" style="display:none">
+  <div class="login-box">
+    <div class="login-brand">📦 物品借还管理</div>
+    <div class="login-tabs">
+      <button class="login-tab active" data-mode="login">登录</button>
+      <button class="login-tab" data-mode="register">注册</button>
+    </div>
+
+    <!-- 登录表单 -->
+    <div id="loginForm" class="login-form">
+      <label>手机号
+        <input class="input" id="loginPhone" type="tel" maxlength="11" placeholder="11 位手机号">
+      </label>
+      <label>密码
+        <input class="input" id="loginPwd" type="password" placeholder="登录密码">
+      </label>
+      <button class="btn primary" id="btnLogin" style="margin-top:6px" onclick="doLogin()">登录</button>
+    </div>
+
+    <!-- 注册表单 -->
+    <div id="registerForm" class="login-form" style="display:none">
+      <label>手机号 <b class="req">*</b>
+        <input class="input" id="regPhone" type="tel" maxlength="11" placeholder="11 位手机号">
+      </label>
+      <label>姓名 <b class="req">*</b>
+        <input class="input" id="regName" placeholder="真实姓名">
+      </label>
+      <label>部门 / 工号
+        <input class="input" id="regDept" placeholder="选填">
+      </label>
+      <label>设置密码 <b class="req">*</b>
+        <input class="input" id="regPwd" type="password" placeholder="至少 4 位">
+      </label>
+      <label>确认密码 <b class="req">*</b>
+        <input class="input" id="regPwd2" type="password" placeholder="再次输入密码">
+      </label>
+      <button class="btn primary" id="btnRegister" style="margin-top:6px" onclick="doRegister()">注册</button>
+      <div class="login-tip">注册后需管理员审核通过才能登录<br>管理员手机号注册将直接通过</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 主应用 ============ -->
+<div class="app" id="app">
   <header class="app-header">
     <div class="brand"><span class="logo">📦</span><h1>物品借还管理工具</h1></div>
     <div class="header-actions">
+      <div class="user-chip" id="userChip" style="display:none">
+        <span>👤 <b id="userName"></b><span id="userRole" style="opacity:.8"></span></span>
+      </div>
       <button class="btn" id="btnExport">导出备份</button>
       <button class="btn" id="btnImport">导入备份</button>
+      <button class="btn" id="btnLogout">退出</button>
       <input type="file" id="importFile" accept=".json" hidden>
     </div>
   </header>
@@ -202,10 +277,10 @@ input,select,textarea{font-family:inherit;font-size:14px}
     <button class="tab active" data-tab="items">📋 物品列表</button>
     <button class="tab" data-tab="scan">📷 扫码借还</button>
     <button class="tab" data-tab="records">🕘 借还记录</button>
+    <button class="tab" data-tab="admin" data-admin style="display:none">🛡 待审批 <span id="adminBadge" style="display:none;background:#ef4444;color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px"></span></button>
   </nav>
 
   <main>
-    <!-- ========== 物品列表 ========== -->
     <section class="panel active" id="panel-items">
       <div class="toolbar">
         <input type="search" class="input" id="searchInput" placeholder="搜索：名称 / 编号 / 分类 / 位置">
@@ -213,6 +288,7 @@ input,select,textarea{font-family:inherit;font-size:14px}
           <option value="all">全部状态</option>
           <option value="available">在库</option>
           <option value="borrowed">已借出</option>
+          <option value="pending">待审批</option>
         </select>
         <button class="btn primary" id="btnAddItem">＋ 添加物品</button>
         <button class="btn" id="btnPrintAll">🖨 打印全部标签</button>
@@ -221,7 +297,6 @@ input,select,textarea{font-family:inherit;font-size:14px}
       <div class="item-grid" id="itemList"></div>
     </section>
 
-    <!-- ========== 扫码借还 ========== -->
     <section class="panel" id="panel-scan">
       <div class="scan-wrap">
         <div id="reader" class="reader"></div>
@@ -236,11 +311,9 @@ input,select,textarea{font-family:inherit;font-size:14px}
           <input class="input" id="manualInput" placeholder="输入物品编号 / ID，也可用 USB 扫码枪">
           <button class="btn primary" id="btnManual">确定</button>
         </div>
-        
       </div>
     </section>
 
-    <!-- ========== 借还记录 ========== -->
     <section class="panel" id="panel-records">
       <div class="toolbar">
         <input type="search" class="input" id="recordSearch" placeholder="搜索记录：物品 / 借用人">
@@ -251,11 +324,26 @@ input,select,textarea{font-family:inherit;font-size:14px}
           <thead>
             <tr>
               <th>时间</th><th>操作</th><th>物品</th><th>编号</th>
-              <th>借用人</th><th>应还日期</th><th>备注</th><th></th>
+              <th>操作人</th><th>应还日期</th><th>状态</th><th>备注</th><th></th>
             </tr>
           </thead>
           <tbody id="recordBody"></tbody>
         </table>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-admin">
+      <div class="admin-section">
+        <h2>👥 待审核用户</h2>
+        <div id="pendingUsers"></div>
+      </div>
+      <div class="admin-section">
+        <h2>🔁 待审批借还</h2>
+        <div id="pendingRecords"></div>
+      </div>
+      <div class="admin-section">
+        <h2>👤 全部用户</h2>
+        <div id="allUsers"></div>
       </div>
     </section>
   </main>
@@ -263,17 +351,16 @@ input,select,textarea{font-family:inherit;font-size:14px}
 
 <script>
 /* ============================================================
- *  物品借还管理工具 —— 纯前端实现
- *  数据保存在浏览器 localStorage 中
+ *  配置区
  * ============================================================ */
+const SUPER_ADMIN_PHONE = '15991972976';   // ← 请改成你自己的手机号
+const PUBLIC_BASE       = 'https://cllbj.github.io/';
 
-const STORE_KEY = 'item_loan_tool_v1';
-let state = { items: [], records: [] };
-
-/* ---------- 工具函数 ---------- */
+/* ============================================================
+ *  基础工具
+ * ============================================================ */
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
-
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
 function pad(n) { return String(n).padStart(2, '0'); }
@@ -297,10 +384,35 @@ function toast(msg, type = '') {
   setTimeout(() => {
     t.classList.remove('show');
     setTimeout(() => t.remove(), 350);
-  }, 2000);
+  }, 3000);
 }
 
-/* ---------- 数据持久化 (Supabase 云端) ---------- */
+/* ============================================================
+ *  全局状态
+ * ============================================================ */
+let state = { items: [], records: [], users: [] };
+let currentUser = null;
+let dataLoaded = false; // 防止网络失败时覆盖云端空数据
+
+/* ============================================================
+ *  密码哈希
+ * ============================================================ */
+async function hashPwd(phone, pwd) {
+  const str = phone + '::' + pwd + '::cllbj_v1';
+  if (window.crypto?.subtle) {
+    try {
+      const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+      return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+    } catch (e) { /* 降级 */ }
+  }
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0;
+  return 'x' + (h >>> 0).toString(16);
+}
+
+/* ============================================================
+ *  Supabase 云端存储
+ * ============================================================ */
 const SUPABASE_URL = 'https://glbrmiyrivvqfxylnljv.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdsYnJtaXlyaXZ2cWZ4eWxubGp2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIzMDA1MDcsImV4cCI6MjEwNzg3NjUwN30.Toz-vYXu_75SOP_BxSDInhTcod0mIg1z3BPlpO7xmYM';
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -311,27 +423,43 @@ async function loadData() {
     const { data, error } = await supabaseClient.from('app_data').select('*').eq('id', DB_ROW_ID).single();
     if (error && error.code !== 'PGRST116') throw error;
     if (data) {
-      state.items = Array.isArray(data.items) ? data.items : [];
+      state.items   = Array.isArray(data.items)   ? data.items   : [];
       state.records = Array.isArray(data.records) ? data.records : [];
+      state.users   = Array.isArray(data.users)   ? data.users   : [];
     }
+    dataLoaded = true;
   } catch (e) {
+    dataLoaded = false;
     console.error('云端读取失败', e);
+    toast('云端数据加载失败，请检查网络', 'err');
   }
 }
 
 async function saveData() {
+  if (!dataLoaded) {
+    toast('云端未连接，为保护数据已阻止保存', 'err');
+    return false;
+  }
   try {
-    const { error } = await supabaseClient.from('app_data').upsert({ 
-      id: DB_ROW_ID, items: state.items, records: state.records, updated_at: new Date() 
+    const { error } = await supabaseClient.from('app_data').upsert({
+      id: DB_ROW_ID, items: state.items, records: state.records, users: state.users, updated_at: new Date()
     });
     if (error) throw error;
+    return true;
   } catch (e) {
     console.error('保存失败', e);
     toast('保存到云端失败！', 'err');
+    return false;
   }
 }
 
-/* ---------- 编号生成 ---------- */
+async function refreshData() {
+  await loadData();
+}
+
+/* ============================================================
+ *  物品编号 / 二维码
+ * ============================================================ */
 function nextCode() {
   let max = 0;
   state.items.forEach(it => {
@@ -341,17 +469,28 @@ function nextCode() {
   return 'A' + String(max + 1).padStart(3, '0');
 }
 
-/* ---------- 二维码内容 ---------- */
-function qrText(id) { return 'ITEM:' + id; }
-
-function findItemByScan(text) {
-  let key = String(text || '').trim();
-  if (!key) return null;
-  if (key.toUpperCase().startsWith('ITEM:')) key = key.slice(5);
-  return state.items.find(i => i.id === key) || state.items.find(i => i.code === key) || null;
+function qrText(item) {
+  return `${PUBLIC_BASE}?item=${encodeURIComponent(item.code || item.id)}`;
 }
 
-/* ---------- 二维码图片生成（DataURL） ---------- */
+function parseScan(text) {
+  const s = String(text || '').trim();
+  if (!s) return '';
+  try {
+    const u = new URL(s);
+    const p = u.searchParams.get('item') || u.searchParams.get('item_id');
+    if (p) return p;
+  } catch (e) {}
+  if (/^ITEM:/i.test(s)) return s.slice(5);
+  return s;
+}
+
+function findItemByScan(text) {
+  const key = parseScan(text);
+  if (!key) return null;
+  return state.items.find(i => i.id === key || i.code === key) || null;
+}
+
 function genQrDataUrl(text, size = 200) {
   const tmp = document.createElement('div');
   tmp.style.cssText = 'position:fixed;left:-9999px;top:0';
@@ -367,7 +506,7 @@ function genQrDataUrl(text, size = 200) {
 }
 
 /* ============================================================
- *  图片解码优化（新增：Canvas 预处理与 jsQR 兜底）
+ *  图片解码
  * ============================================================ */
 async function decodeImage(file) {
   return new Promise((resolve) => {
@@ -375,47 +514,31 @@ async function decodeImage(file) {
     reader.onload = (e) => {
       const img = new Image();
       img.onload = () => {
-        // 1. 创建 Canvas，将图片缩小到长边不超过 1000px
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
-        let width = img.width;
-        let height = img.height;
+        let width = img.width, height = img.height;
         const maxSize = 1000;
         if (width > maxSize || height > maxSize) {
-          if (width > height) {
-            height = Math.round((height * maxSize) / width);
-            width = maxSize;
-          } else {
-            width = Math.round((width * maxSize) / height);
-            height = maxSize;
-          }
+          if (width > height) { height = Math.round((height * maxSize) / width); width = maxSize; }
+          else { width = Math.round((width * maxSize) / height); height = maxSize; }
         }
-        canvas.width = width;
-        canvas.height = height;
+        canvas.width = width; canvas.height = height;
         ctx.drawImage(img, 0, 0, width, height);
 
-        // 2. 方案一：使用 jsQR 进行高容错解码
         const imageData = ctx.getImageData(0, 0, width, height);
         const code = jsQR(imageData.data, imageData.width, imageData.height, {
           inversionAttempts: "dontInvert",
         });
+        if (code && code.data) { resolve(code.data); return; }
 
-        if (code && code.data) {
-          resolve(code.data);
-          return;
-        }
-
-        // 3. 方案二：jsQR 失败后，退回 html5-qrcode 的 scanFile
         const tmp = new Html5Qrcode('reader');
         canvas.toBlob(async (blob) => {
           const smallFile = new File([blob], file.name, { type: 'image/jpeg' });
           try {
             const res = await tmp.scanFile(smallFile, false);
-            tmp.clear();
-            resolve(res);
+            tmp.clear(); resolve(res);
           } catch (err) {
-            tmp.clear();
-            resolve(null); // 彻底失败
+            tmp.clear(); resolve(null);
           }
         }, 'image/jpeg', 0.9);
       };
@@ -426,14 +549,29 @@ async function decodeImage(file) {
 }
 
 /* ============================================================
- *  渲染：物品列表
+ *  状态展示
+ * ============================================================ */
+function statusInfo(item) {
+  const s = item.status;
+  if (s === 'available') return { label: '在库', cls: 'available', action: '借出', actionCls: 'primary' };
+  if (s === 'borrowed')  return { label: '已借出', cls: 'borrowed', action: '归还', actionCls: 'success' };
+  if (s === 'pending_borrow') return { label: '借出待审批', cls: 'pending', action: '等待审批', actionCls: '', disabled: true };
+  if (s === 'pending_return') return { label: '归还待审批', cls: 'pending', action: '等待审批', actionCls: '', disabled: true };
+  return { label: s || '未知', cls: '', action: '', actionCls: '' };
+}
+
+/* ============================================================
+ *  渲染
  * ============================================================ */
 function renderItems() {
   const kw = $('#searchInput').value.trim().toLowerCase();
   const st = $('#filterStatus').value;
+  const isAdmin = !!currentUser?.isAdmin;
 
   const list = state.items.filter(it => {
-    if (st !== 'all' && it.status !== st) return false;
+    if (st === 'pending') {
+      if (it.status !== 'pending_borrow' && it.status !== 'pending_return') return false;
+    } else if (st !== 'all' && it.status !== st) return false;
     if (kw) {
       const blob = [it.name, it.code, it.category, it.spec, it.location, it.remark, it.borrower]
         .join(' ').toLowerCase();
@@ -444,18 +582,35 @@ function renderItems() {
 
   const el = $('#itemList');
   if (!list.length) {
-    el.innerHTML = `<div class="empty"><span class="big">📭</span>${state.items.length ? '没有符合条件的物品' : '暂无物品，点击「添加物品」开始录入'}</div>`;
+    el.innerHTML = `<div class="empty"><span class="big">📭</span>${
+      state.items.length ? '没有符合条件的物品' : '暂无物品' + (isAdmin ? '，点击「添加物品」开始录入' : '')
+    }</div>`;
   } else {
     const today = todayStr();
     el.innerHTML = list.map(it => {
+      const info = statusInfo(it);
       const overdue = it.status === 'borrowed' && it.dueDate && it.dueDate < today;
+      let infoLine = '';
+      if (it.status === 'borrowed') {
+        infoLine = `<div class="borrow-info ${overdue ? 'over' : ''}">
+          👤 ${esc(it.borrower)} · 借出 ${esc(it.borrowDate)}
+          ${it.dueDate ? ` · 应还 ${esc(it.dueDate)}` : ''}</div>`;
+      } else if (it.status === 'pending_borrow') {
+        infoLine = `<div class="borrow-info pend">
+          ⏳ ${esc(it.lockByName || '')} 申请借出中，等待管理员审批</div>`;
+      } else if (it.status === 'pending_return') {
+        infoLine = `<div class="borrow-info pend">
+          ⏳ ${esc(it.lockByName || '')} 申请归还中，等待管理员审批</div>`;
+      }
+
+      const actionDisabled = info.disabled ? 'disabled' : '';
+      const actionCls = info.disabled ? '' : info.actionCls;
+
       return `
-      <div class="item-card ${it.status === 'borrowed' ? 'borrowed' : ''}">
+      <div class="item-card ${it.status === 'borrowed' ? 'borrowed' : ''} ${info.cls === 'pending' ? 'pending' : ''}">
         <div class="card-top">
           <span class="code">${esc(it.code)}</span>
-          <span class="badge ${overdue ? 'overdue' : it.status}">
-            ${overdue ? '已逾期' : (it.status === 'available' ? '在库' : '已借出')}
-          </span>
+          <span class="badge ${overdue ? 'overdue' : info.cls}">${overdue ? '已逾期' : info.label}</span>
         </div>
         <div class="item-name">${esc(it.name)}</div>
         ${(it.category || it.spec) ? `<div class="item-meta">
@@ -463,52 +618,55 @@ function renderItems() {
             ${it.spec ? `<span class="tag">${esc(it.spec)}</span>` : ''}
           </div>` : ''}
         ${it.location ? `<div class="item-loc">📍 ${esc(it.location)}</div>` : ''}
-        ${it.status === 'borrowed'
-          ? `<div class="borrow-info ${overdue ? 'over' : ''}">
-               👤 ${esc(it.borrower)} · 借出 ${esc(it.borrowDate)}
-               ${it.dueDate ? ` · 应还 ${esc(it.dueDate)}` : ''}
-             </div>`
-          : ''}
+        ${infoLine}
         <div class="card-actions">
-          <button class="btn sm" data-act="qr" data-id="${it.id}">二维码</button>
-          <button class="btn sm ${it.status === 'available' ? 'primary' : 'success'}"
-                  data-act="trade" data-id="${it.id}">
-            ${it.status === 'available' ? '借出' : '归还'}
+          ${isAdmin ? `<button class="btn sm" data-act="qr" data-id="${it.id}">二维码</button>` : ''}
+          <button class="btn sm ${actionCls}" data-act="trade" data-id="${it.id}" ${actionDisabled}>
+            ${info.action}
           </button>
-          <button class="btn sm" data-act="edit" data-id="${it.id}">编辑</button>
-          <button class="btn sm danger" data-act="del" data-id="${it.id}">删除</button>
+          ${isAdmin ? `
+            <button class="btn sm" data-act="edit" data-id="${it.id}">编辑</button>
+            <button class="btn sm danger" data-act="del" data-id="${it.id}">删除</button>
+          ` : ''}
         </div>
       </div>`;
     }).join('');
   }
 
-  // 统计
   const total = state.items.length;
   const avail = state.items.filter(i => i.status === 'available').length;
-  const borrowed = total - avail;
+  const borrowed = state.items.filter(i => i.status === 'borrowed').length;
+  const pend = state.items.filter(i => i.status === 'pending_borrow' || i.status === 'pending_return').length;
   const today = todayStr();
   const over = state.items.filter(i => i.status === 'borrowed' && i.dueDate && i.dueDate < today).length;
   $('#stats').innerHTML = `共 <b>${total}</b> 件 · 在库 <b>${avail}</b> 件 · 已借出 <b>${borrowed}</b> 件`
+    + (pend ? ` · 待审批 <b>${pend}</b> 件` : '')
     + (over ? ` · <span class="warn">逾期 ${over} 件</span>` : '');
 }
 
-/* ============================================================
- *  渲染：借还记录
- * ============================================================ */
 function renderRecords() {
   const kw = $('#recordSearch').value.trim().toLowerCase();
-  const list = state.records.filter(r => {
+  const isAdmin = !!currentUser?.isAdmin;
+
+  let list = state.records.slice();
+  if (!isAdmin && currentUser) {
+    list = list.filter(r => r.personId === currentUser.id);
+  }
+  list = list.filter(r => {
     if (!kw) return true;
     return [r.itemName, r.itemCode, r.person, r.remark].join(' ').toLowerCase().includes(kw);
   }).sort((a, b) => b.time - a.time);
 
   const body = $('#recordBody');
   if (!list.length) {
-    body.innerHTML = `<tr><td colspan="8" style="text-align:center;color:#94a3b8;padding:40px">
-      暂无借还记录</td></tr>`;
+    body.innerHTML = `<tr><td colspan="9" style="text-align:center;color:#94a3b8;padding:40px">
+      ${isAdmin ? '暂无借还记录' : '暂无你的借还记录'}</td></tr>`;
     return;
   }
-  body.innerHTML = list.map(r => `
+  body.innerHTML = list.map(r => {
+    const status = r.status || 'approved';
+    const statusLabel = status === 'pending' ? '待审批' : status === 'approved' ? '已通过' : '已拒绝';
+    return `
     <tr>
       <td style="color:#64748b;font-size:12.5px;white-space:nowrap">${fmtTime(r.time)}</td>
       <td><span class="pill ${r.type}">${r.type === 'borrow' ? '借出' : '归还'}</span></td>
@@ -516,15 +674,100 @@ function renderRecords() {
       <td style="color:#64748b">${esc(r.itemCode || '')}</td>
       <td>${esc(r.person || '-')}</td>
       <td style="color:#64748b">${esc(r.dueDate || '-')}</td>
-      <td style="color:#64748b;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+      <td><span class="pill ${status}">${statusLabel}</span></td>
+      <td style="color:#64748b;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
           title="${esc(r.remark || '')}">${esc(r.remark || '-')}</td>
-      <td><button class="btn sm danger" data-recid="${r.id}">删除</button></td>
-    </tr>`).join('');
+      <td>${isAdmin ? `<button class="btn sm danger" data-recid="${r.id}">删除</button>` : ''}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderAdmin() {
+  if (!currentUser?.isAdmin) return;
+
+  const pendingUsers = state.users.filter(u => u.status === 'pending');
+  const usersEl = $('#pendingUsers');
+  if (!pendingUsers.length) {
+    usersEl.innerHTML = '<div class="empty-sm">暂无待审核用户</div>';
+  } else {
+    usersEl.innerHTML = pendingUsers.map(u => `
+      <div class="admin-card">
+        <div>
+          <b>${esc(u.name)}</b> · ${esc(u.phone)}
+          ${u.dept ? `<span class="muted"> · ${esc(u.dept)}</span>` : ''}
+          <div class="muted">申请于 ${fmtTime(u.createdAt || 0)}</div>
+        </div>
+        <div class="admin-actions">
+          <button class="btn sm success" data-approve-user="${u.id}">通过</button>
+          <button class="btn sm danger" data-reject-user="${u.id}">拒绝</button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  const pendingRecs = state.records.filter(r => r.status === 'pending');
+  const recsEl = $('#pendingRecords');
+  if (!pendingRecs.length) {
+    recsEl.innerHTML = '<div class="empty-sm">暂无待审批借还</div>';
+  } else {
+    recsEl.innerHTML = pendingRecs.map(r => `
+      <div class="admin-card">
+        <div>
+          <span class="pill ${r.type}">${r.type === 'borrow' ? '借出申请' : '归还申请'}</span>
+          <b>${esc(r.itemName)}</b> <span class="muted">(${esc(r.itemCode)})</span>
+          <div style="font-size:13px;margin-top:4px">
+            申请人：${esc(r.person)} ${r.personPhone ? `· ${esc(r.personPhone)}` : ''}
+          </div>
+          ${r.type === 'borrow' && r.dueDate ? `<div class="muted">预计归还：${esc(r.dueDate)}</div>` : ''}
+          ${r.remark ? `<div class="muted">备注：${esc(r.remark)}</div>` : ''}
+          <div class="muted">申请于 ${fmtTime(r.time)}</div>
+        </div>
+        <div class="admin-actions">
+          <button class="btn sm success" data-approve-rec="${r.id}">通过</button>
+          <button class="btn sm danger" data-reject-rec="${r.id}">拒绝</button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  const allEl = $('#allUsers');
+  const sorted = state.users.slice().sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  if (!sorted.length) {
+    allEl.innerHTML = '<div class="empty-sm">暂无用户</div>';
+  } else {
+    allEl.innerHTML = sorted.map(u => {
+      const sl = u.status === 'pending' ? '待审核' : u.status === 'approved' ? '正常' : '已拒绝';
+      const sc = u.status === 'pending' ? 'pending' : u.status === 'approved' ? 'approved' : 'rejected';
+      return `
+      <div class="admin-card">
+        <div>
+          <b>${esc(u.name)}</b> · ${esc(u.phone)}
+          ${u.isAdmin ? '<span class="pill approved" style="margin-left:6px">管理员</span>' : ''}
+          <span class="pill ${sc}" style="margin-left:6px">${sl}</span>
+          ${u.dept ? `<div class="muted">${esc(u.dept)}</div>` : ''}
+        </div>
+        <div class="admin-actions">
+          ${u.status !== 'approved' ? `<button class="btn sm success" data-approve-user="${u.id}">通过</button>` : ''}
+          ${u.status !== 'rejected' && u.phone !== SUPER_ADMIN_PHONE ? `<button class="btn sm danger" data-reject-user="${u.id}">${u.status === 'approved' ? '禁用' : '拒绝'}</button>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  const count = pendingUsers.length + pendingRecs.length;
+  const badge = $('#adminBadge');
+  if (count > 0) {
+    badge.textContent = count;
+    badge.style.display = 'inline';
+  } else {
+    badge.style.display = 'none';
+  }
 }
 
 function renderAll() {
   renderItems();
   renderRecords();
+  renderAdmin();
 }
 
 /* ============================================================
@@ -549,8 +792,11 @@ function showModal(innerHtml) {
   return { mask, close, $: s => mask.querySelector(s) };
 }
 
-/* ---------- 添加 / 编辑物品 ---------- */
+/* ============================================================
+ *  物品操作
+ * ============================================================ */
 function openItemModal(item) {
+  if (!currentUser?.isAdmin) { toast('仅管理员可操作', 'err'); return; }
   const isNew = !item;
   const d = item || { name: '', code: nextCode(), category: '', spec: '', location: '', remark: '' };
 
@@ -583,7 +829,7 @@ function openItemModal(item) {
     </div>
   `);
 
-  q('#f-save').addEventListener('click', () => {
+  q('#f-save').addEventListener('click', async () => {
     const name = q('#f-name').value.trim();
     if (!name) { toast('请填写物品名称', 'err'); q('#f-name').focus(); return; }
 
@@ -607,11 +853,10 @@ function openItemModal(item) {
       Object.assign(item, payload);
       toast('修改已保存', 'ok');
     }
-    saveData(); renderAll(); close();
+    await saveData(); renderAll(); close();
   });
 }
 
-/* ---------- 二维码弹窗 ---------- */
 function openQrModal(item) {
   const { close, $: q } = showModal(`
     <div class="modal-head">
@@ -622,6 +867,7 @@ function openQrModal(item) {
       <div id="qrBox" class="qr-box"></div>
       <div class="qr-name">${esc(item.name)}</div>
       <div class="qr-code">编号：${esc(item.code)}</div>
+      <div class="qr-code" style="font-size:11px;word-break:break-all;max-width:300px">${esc(qrText(item))}</div>
     </div>
     <div class="modal-foot">
       <button class="btn" id="qr-download">下载图片</button>
@@ -635,7 +881,7 @@ function openQrModal(item) {
   }
 
   new QRCode(q('#qrBox'), {
-    text: qrText(item.id),
+    text: qrText(item),
     width: 200, height: 200,
     correctLevel: QRCode.CorrectLevel.M
   });
@@ -653,17 +899,43 @@ function openQrModal(item) {
 }
 
 /* ============================================================
- *  借出 / 归还
+ *  借还操作
  * ============================================================ */
 function openTradeModal(item) {
-  const isBorrow = item.status === 'available';
-  const today = todayStr();
+  if (!currentUser) { showLogin(); return; }
+  const s = item.status;
 
-  if (isBorrow) {
+  if (s === 'pending_borrow' || s === 'pending_return') {
+    const who = item.lockByName || '其他用户';
+    const what = s === 'pending_borrow' ? '借出' : '归还';
+    showModal(`
+      <div class="modal-head">
+        <h3>物品当前状态</h3>
+        <button class="icon-btn" data-close>✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="item-brief">
+          <div class="n">${esc(item.name)}</div>
+          <div class="m">编号 ${esc(item.code)}</div>
+        </div>
+        <div class="borrow-info pend">
+          ⏳ 该物品已有 <b>${esc(who)}</b> 提交了${what}申请，正在等待管理员审批。<br>
+          请在审批完成后再操作。
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn primary" data-close>知道了</button>
+      </div>
+    `);
+    return;
+  }
+
+  if (s === 'available') {
+    const me = currentUser;
     const defaultDue = todayStr(new Date(Date.now() + 30 * 864e5));
     const { close, $: q } = showModal(`
       <div class="modal-head">
-        <h3>📤 借出物品</h3>
+        <h3>📤 提交借出申请</h3>
         <button class="icon-btn" data-close>✕</button>
       </div>
       <div class="modal-body">
@@ -671,44 +943,39 @@ function openTradeModal(item) {
           <div class="n">${esc(item.name)}</div>
           <div class="m">编号 ${esc(item.code)}${item.location ? ' · 📍' + esc(item.location) : ''}</div>
         </div>
-        <label class="field"><span>借用人 <b class="req">*</b></span>
-          <input class="input" id="m-borrower" placeholder="姓名"></label>
+        <div class="item-brief" style="background:#eff6ff;border-color:#bfdbfe">
+          <div class="m" style="color:#1d4ed8">
+            👤 申请人：<b>${esc(me.name)}</b> · ${esc(me.phone)}
+          </div>
+        </div>
         <label class="field"><span>预计归还日期</span>
           <input class="input" type="date" id="m-due" value="${defaultDue}"></label>
         <label class="field"><span>备注</span>
           <textarea class="input" id="m-remark" rows="2" placeholder="选填"></textarea></label>
+        <div class="hint" style="margin-top:0">
+          提交后该物品将被锁定，其他人暂时无法借出，需管理员审批通过后正式借出。
+        </div>
       </div>
       <div class="modal-foot">
         <button class="btn" data-close>取消</button>
-        <button class="btn primary" id="m-ok">确认借出</button>
+        <button class="btn primary" id="m-ok">提交借出申请</button>
       </div>
     `);
 
-    q('#m-ok').addEventListener('click', () => {
-      const borrower = q('#m-borrower').value.trim();
-      if (!borrower) { toast('请填写借用人', 'err'); q('#m-borrower').focus(); return; }
-
-      item.status = 'borrowed';
-      item.borrower = borrower;
-      item.borrowDate = todayStr();
-      item.dueDate = q('#m-due').value || '';
-      item.borrowRemark = q('#m-remark').value.trim();
-
-      state.records.push({
-        id: uid(), itemId: item.id, itemName: item.name, itemCode: item.code,
-        type: 'borrow', person: borrower, time: Date.now(),
-        dueDate: item.dueDate, remark: item.borrowRemark
-      });
-
-      saveData(); renderAll(); close();
-      toast(`「${item.name}」已借出给 ${borrower}`, 'ok');
+    q('#m-ok').addEventListener('click', async () => {
+      const due = q('#m-due').value || '';
+      const remark = q('#m-remark').value.trim();
+      await submitBorrow(item.id, due, remark);
+      close();
     });
+    return;
+  }
 
-  } else {
-    const overdue = item.dueDate && item.dueDate < today;
+  if (s === 'borrowed') {
+    const overdue = item.dueDate && item.dueDate < todayStr();
     const { close, $: q } = showModal(`
       <div class="modal-head">
-        <h3>📥 归还物品</h3>
+        <h3>📥 提交归还申请</h3>
         <button class="icon-btn" data-close>✕</button>
       </div>
       <div class="modal-body">
@@ -722,44 +989,170 @@ function openTradeModal(item) {
         </div>
         <label class="field"><span>归还备注</span>
           <textarea class="input" id="m-remark" rows="2" placeholder="选填，如：外观完好 / 有轻微磨损"></textarea></label>
+        <div class="hint" style="margin-top:0">
+          提交后物品将被锁定为「归还待审批」，需管理员确认后正式入库。
+        </div>
       </div>
       <div class="modal-foot">
         <button class="btn" data-close>取消</button>
-        <button class="btn success" id="m-ok">确认归还</button>
+        <button class="btn success" id="m-ok">提交归还申请</button>
       </div>
     `);
 
-    q('#m-ok').addEventListener('click', () => {
+    q('#m-ok').addEventListener('click', async () => {
       const remark = q('#m-remark').value.trim();
-      const borrower = item.borrower;
-
-      state.records.push({
-        id: uid(), itemId: item.id, itemName: item.name, itemCode: item.code,
-        type: 'return', person: borrower, time: Date.now(),
-        dueDate: item.dueDate || '', remark
-      });
-
-      item.status = 'available';
-      item.borrower = '';
-      item.borrowDate = '';
-      item.dueDate = '';
-      item.borrowRemark = '';
-
-      saveData(); renderAll(); close();
-      toast(`「${item.name}」已归还入库`, 'ok');
+      await submitReturn(item.id, remark);
+      close();
     });
   }
 }
 
+async function submitBorrow(itemId, dueDate, remark) {
+  await refreshData();
+  const item = state.items.find(i => i.id === itemId);
+  if (!item) { toast('物品不存在', 'err'); return; }
+  if (item.status !== 'available') {
+    toast('该物品已被他人申请或借出', 'err');
+    renderAll();
+    return;
+  }
+
+  const me = currentUser;
+  item.status = 'pending_borrow';
+  item.lockBy = me.id;
+  item.lockByName = me.name;
+  item.lockAt = Date.now();
+  item.pendingDueDate = dueDate;
+
+  state.records.push({
+    id: uid(), itemId: item.id, itemName: item.name, itemCode: item.code,
+    type: 'borrow', person: me.name, personId: me.id, personPhone: me.phone,
+    time: Date.now(), dueDate, remark, status: 'pending'
+  });
+
+  const ok = await saveData();
+  renderAll();
+  if (ok) toast('借出申请已提交，等待管理员审批', 'ok');
+}
+
+async function submitReturn(itemId, remark) {
+  await refreshData();
+  const item = state.items.find(i => i.id === itemId);
+  if (!item) { toast('物品不存在', 'err'); return; }
+  if (item.status !== 'borrowed') {
+    toast('该物品状态已变化', 'err');
+    renderAll();
+    return;
+  }
+
+  const me = currentUser;
+  item.status = 'pending_return';
+  item.lockBy = me.id;
+  item.lockByName = me.name;
+  item.lockAt = Date.now();
+
+  state.records.push({
+    id: uid(), itemId: item.id, itemName: item.name, itemCode: item.code,
+    type: 'return', person: me.name, personId: me.id, personPhone: me.phone,
+    time: Date.now(), dueDate: item.dueDate || '', remark, status: 'pending'
+  });
+
+  const ok = await saveData();
+  renderAll();
+  if (ok) toast('归还申请已提交，等待管理员审批', 'ok');
+}
+
 /* ============================================================
- *  打印标签
+ *  审批
+ * ============================================================ */
+async function approveRecord(recordId) {
+  if (!currentUser?.isAdmin) return;
+  await refreshData();
+  const rec = state.records.find(r => r.id === recordId);
+  if (!rec || rec.status !== 'pending') { toast('该申请已处理', 'err'); renderAll(); return; }
+  const item = state.items.find(i => i.id === rec.itemId);
+  if (!item) { toast('物品不存在', 'err'); return; }
+
+  if (rec.type === 'borrow') {
+    item.status = 'borrowed';
+    item.borrower = rec.person;
+    item.borrowerId = rec.personId;
+    item.borrowDate = todayStr(new Date(rec.time));
+    item.dueDate = rec.dueDate || '';
+    item.borrowRemark = rec.remark || '';
+  } else {
+    item.status = 'available';
+    item.borrower = ''; item.borrowerId = ''; item.borrowDate = '';
+    item.dueDate = ''; item.borrowRemark = '';
+  }
+  delete item.lockBy; delete item.lockByName; delete item.lockAt; delete item.pendingDueDate;
+
+  rec.status = 'approved';
+  rec.reviewedBy = currentUser.name;
+  rec.reviewedAt = Date.now();
+
+  await saveData();
+  renderAll();
+  toast('已通过审批', 'ok');
+}
+
+async function rejectRecord(recordId) {
+  if (!currentUser?.isAdmin) return;
+  await refreshData();
+  const rec = state.records.find(r => r.id === recordId);
+  if (!rec || rec.status !== 'pending') { toast('该申请已处理', 'err'); renderAll(); return; }
+  const item = state.items.find(i => i.id === rec.itemId);
+  if (!item) { toast('物品不存在', 'err'); return; }
+
+  if (rec.type === 'borrow') item.status = 'available';
+  else item.status = 'borrowed';
+
+  delete item.lockBy; delete item.lockByName; delete item.lockAt; delete item.pendingDueDate;
+
+  rec.status = 'rejected';
+  rec.reviewedBy = currentUser.name;
+  rec.reviewedAt = Date.now();
+
+  await saveData();
+  renderAll();
+  toast('已拒绝申请', 'ok');
+}
+
+async function approveUser(userId) {
+  if (!currentUser?.isAdmin) return;
+  await refreshData();
+  const u = state.users.find(x => x.id === userId);
+  if (!u) return;
+  u.status = 'approved';
+  await saveData();
+  renderAll();
+  toast('用户已通过审核', 'ok');
+}
+
+async function rejectUser(userId) {
+  if (!currentUser?.isAdmin) return;
+  await refreshData();
+  const u = state.users.find(x => x.id === userId);
+  if (!u) return;
+  if (u.isAdmin && u.phone === SUPER_ADMIN_PHONE) {
+    toast('不能禁用超级管理员', 'err');
+    return;
+  }
+  u.status = 'rejected';
+  await saveData();
+  renderAll();
+  toast('用户已拒绝/禁用', 'ok');
+}
+
+/* ============================================================
+ *  打印
  * ============================================================ */
 function printLabels(items) {
   if (!items.length) { toast('没有可打印的物品', 'err'); return; }
   if (typeof QRCode === 'undefined') { toast('二维码库未加载，请联网刷新', 'err'); return; }
 
   const labels = items.map(it => {
-    const url = genQrDataUrl(qrText(it.id), 220);
+    const url = genQrDataUrl(qrText(it), 220);
     return `<div class="label">
       <img src="${url}" alt="qr">
       <div class="l-name">${esc(it.name)}</div>
@@ -802,28 +1195,28 @@ function updateScanButtons() {
 
 async function startScan() {
   if (isScanning) return;
+  if (!currentUser) { showLogin(); return; }
   if (typeof Html5Qrcode === 'undefined') {
     toast('扫码库未加载，请联网后刷新页面', 'err');
     return;
   }
-  $('#reader').classList.add('active')
+  $('#reader').classList.add('active');
   scanner = new Html5Qrcode('reader');
   try {
     await scanner.start(
-  { facingMode: 'environment' },
-  { 
-    fps: 10, 
-    // 让扫描框根据屏幕实际大小自适应，避免固定240在部分手机上溢出或太小
-    qrbox: function(viewfinderWidth, viewfinderHeight) {
-      let minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-      let qrboxSize = Math.floor(minEdge * 0.75);
-      return { width: qrboxSize, height: qrboxSize };
-    },
-    aspectRatio: 1.0 // 强制摄像头输出方形比例，方便渲染
-  },
-  onScanSuccess,
-  () => {}   // 忽略逐帧识别失败
-);
+      { facingMode: 'environment' },
+      {
+        fps: 10,
+        qrbox: function(viewfinderWidth, viewfinderHeight) {
+          const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+          const qrboxSize = Math.floor(minEdge * 0.75);
+          return { width: qrboxSize, height: qrboxSize };
+        },
+        aspectRatio: 1.0
+      },
+      onScanSuccess,
+      () => {}
+    );
     isScanning = true;
     updateScanButtons();
   } catch (err) {
@@ -862,17 +1255,165 @@ async function onScanSuccess(text) {
 }
 
 /* ============================================================
+ *  登录注册
+ * ============================================================ */
+function showLogin() {
+  $('#loginPage').style.display = 'flex';
+  $('#app').style.display = 'none';
+  switchLoginTab('login');
+}
+
+function hideLogin() {
+  $('#loginPage').style.display = 'none';
+  $('#app').style.display = 'block';
+}
+
+function switchLoginTab(mode) {
+  $$('.login-tab').forEach(t => t.classList.toggle('active', t.dataset.mode === mode));
+  $('#loginForm').style.display = mode === 'login' ? 'flex' : 'none';
+  $('#registerForm').style.display = mode === 'register' ? 'flex' : 'none';
+}
+
+async function doLogin() {
+  const phone = $('#loginPhone').value.trim();
+  const pwd = $('#loginPwd').value;
+  if (!/^1[3-9]\d{9}$/.test(phone)) return toast('手机号格式不正确', 'err');
+  if (!pwd) return toast('请输入密码', 'err');
+
+  const btn = $('#btnLogin');
+  const oldText = btn.textContent;
+  btn.disabled = true; btn.textContent = '验证中...';
+
+  try {
+    await refreshData();
+    const u = state.users.find(x => x.phone === phone);
+    if (!u) throw new Error('该手机号未注册');
+    
+    const hash = await hashPwd(phone, pwd);
+    if (u.pwdHash !== hash) throw new Error('密码错误');
+    if (u.status === 'pending') throw new Error('账号正在等待管理员审核');
+    if (u.status === 'rejected') throw new Error('账号已被禁用，请联系管理员');
+
+    currentUser = { id: u.id, phone: u.phone, name: u.name, dept: u.dept || '', isAdmin: !!u.isAdmin };
+    localStorage.setItem('loan_user_v1', JSON.stringify(currentUser));
+
+    hideLogin();
+    applyPermissions();
+    renderAll();
+    toast(`欢迎，${currentUser.name}`, 'ok');
+    handlePendingItem();
+  } catch (e) {
+    toast(e.message, 'err');
+  } finally {
+    btn.disabled = false; btn.textContent = oldText;
+  }
+}
+
+async function doRegister() {
+  const phone = $('#regPhone').value.trim();
+  const name  = $('#regName').value.trim();
+  const dept  = $('#regDept').value.trim();
+  const pwd   = $('#regPwd').value;
+  const pwd2  = $('#regPwd2').value;
+
+  // 前端拦截
+  if (!/^1[3-9]\d{9}$/.test(phone)) return toast('手机号格式不正确，请填写 11 位手机号', 'err');
+  if (!name) return toast('请填写姓名', 'err');
+  if (pwd.length < 4) return toast('密码至少 4 位', 'err');
+  if (pwd !== pwd2) return toast('两次密码不一致', 'err');
+
+  const btn = $('#btnRegister');
+  const oldText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '正在保存...';
+
+  try {
+    await refreshData();
+    if (state.users.find(x => x.phone === phone)) {
+      throw new Error('该手机号已注册');
+    }
+
+    const pwdHash = await hashPwd(phone, pwd);
+    const isAdmin = phone === SUPER_ADMIN_PHONE;
+    const status = isAdmin ? 'approved' : 'pending';
+
+    state.users.push({
+      id: uid(), phone, pwdHash, name, dept, isAdmin, status, createdAt: Date.now()
+    });
+
+    const ok = await saveData();
+    if (!ok) throw new Error('保存到云端失败，请检查网络');
+
+    toast(isAdmin ? '管理员创建成功，请登录' : '注册成功，请等待管理员审核', 'ok');
+    switchLoginTab('login');
+    $('#loginPhone').value = phone;
+    $('#loginPwd').value = '';
+    
+    // 清空表单
+    $('#regPhone').value = ''; $('#regName').value = ''; $('#regDept').value = ''; 
+    $('#regPwd').value = ''; $('#regPwd2').value = '';
+
+    if (isAdmin) $('#loginPwd').focus();
+  } catch (e) {
+    toast(e.message, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = oldText;
+  }
+}
+
+function doLogout() {
+  localStorage.removeItem('loan_user_v1');
+  currentUser = null;
+  stopScan();
+  showLogin();
+}
+
+function applyPermissions() {
+  const isAdmin = !!currentUser?.isAdmin;
+  $('#btnAddItem').style.display = isAdmin ? '' : 'none';
+  $('#btnPrintAll').style.display = isAdmin ? '' : 'none';
+  $('#btnExport').style.display = isAdmin ? '' : 'none';
+  $('#btnImport').style.display = isAdmin ? '' : 'none';
+  $('#btnClearRecords').style.display = isAdmin ? '' : 'none';
+  $$('[data-admin]').forEach(el => el.style.display = isAdmin ? '' : 'none');
+
+  if (currentUser) {
+    $('#userChip').style.display = 'flex';
+    $('#userName').textContent = currentUser.name;
+    $('#userRole').textContent = currentUser.isAdmin ? ' · 管理员' : '';
+  } else {
+    $('#userChip').style.display = 'none';
+  }
+}
+
+function handlePendingItem() {
+  const params = new URLSearchParams(location.search);
+  const itemCode = params.get('item');
+  if (!itemCode) return;
+  const item = state.items.find(i => i.code === itemCode || i.id === itemCode);
+  history.replaceState(null, '', location.pathname);
+  if (item) {
+    openTradeModal(item);
+  } else {
+    toast('未找到该物品：' + itemCode, 'err');
+  }
+}
+
+/* ============================================================
  *  事件绑定
  * ============================================================ */
 function bindEvents() {
-  /* --- Tab 切换 --- */
+  $$('.login-tab').forEach(t => t.addEventListener('click', () => switchLoginTab(t.dataset.mode)));
+  $('#loginPwd').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+  $('#btnLogout').addEventListener('click', doLogout);
+
   $$('.tab').forEach(btn => btn.addEventListener('click', () => {
     $$('.tab').forEach(b => b.classList.toggle('active', b === btn));
     $$('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + btn.dataset.tab));
     if (btn.dataset.tab !== 'scan') stopScan();
   }));
 
-  /* --- 物品列表 --- */
   $('#searchInput').addEventListener('input', renderItems);
   $('#filterStatus').addEventListener('change', renderItems);
   $('#btnAddItem').addEventListener('click', () => openItemModal(null));
@@ -883,46 +1424,53 @@ function bindEvents() {
 
   $('#itemList').addEventListener('click', e => {
     const btn = e.target.closest('button[data-act]');
-    if (!btn) return;
+    if (!btn || btn.disabled) return;
     const item = state.items.find(i => i.id === btn.dataset.id);
     if (!item) return;
 
     switch (btn.dataset.act) {
       case 'qr':    openQrModal(item); break;
       case 'trade': openTradeModal(item); break;
-      case 'edit':  openItemModal(item); break;
+      case 'edit':
+        if (!currentUser?.isAdmin) { toast('仅管理员可操作', 'err'); return; }
+        openItemModal(item);
+        break;
       case 'del':
+        if (!currentUser?.isAdmin) { toast('仅管理员可操作', 'err'); return; }
         if (confirm(`确定删除「${item.name}」吗？\n删除后该物品的二维码将失效。`)) {
           state.items = state.items.filter(i => i.id !== item.id);
-          saveData(); renderAll();
+          saveData().then(() => renderAll());
           toast('已删除', 'ok');
         }
         break;
     }
   });
 
-  /* --- 扫码页 --- */
+  $('#panel-admin').addEventListener('click', e => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    if (btn.dataset.approveUser) approveUser(btn.dataset.approveUser);
+    else if (btn.dataset.rejectUser) rejectUser(btn.dataset.rejectUser);
+    else if (btn.dataset.approveRec) approveRecord(btn.dataset.approveRec);
+    else if (btn.dataset.rejectRec) rejectRecord(btn.dataset.rejectRec);
+  });
+
   $('#btnStartScan').addEventListener('click', startScan);
   $('#btnStopScan').addEventListener('click', stopScan);
   $('#btnScanFile').addEventListener('click', () => $('#qrFile').click());
 
-  // 替换为调用优化的解码函数
   $('#qrFile').addEventListener('change', async e => {
     const file = e.target.files[0];
-    e.target.value = ''; // 清空，允许重复选择同一文件
+    e.target.value = '';
     if (!file) return;
-    
+    if (!currentUser) { showLogin(); return; }
+
     toast('正在解析图片，请稍候...', '');
-    
     const res = await decodeImage(file);
-    
     if (res) {
       const item = findItemByScan(res);
-      if (item) {
-        openTradeModal(item);
-      } else {
-        alert('识别成功，但未找到对应物品。\n识别内容：' + res);
-      }
+      if (item) openTradeModal(item);
+      else alert('识别成功，但未找到对应物品。\n识别内容：' + res);
     } else {
       toast('图片未识别出二维码，请确保二维码清晰无遮挡', 'err');
     }
@@ -930,10 +1478,11 @@ function bindEvents() {
 
   $('#btnManual').addEventListener('click', handleManual);
   $('#manualInput').addEventListener('keydown', e => {
-    if (e.key === 'Enter') handleManual();   // 扫码枪通常以回车结尾
+    if (e.key === 'Enter') handleManual();
   });
 
   function handleManual() {
+    if (!currentUser) { showLogin(); return; }
     const v = $('#manualInput').value.trim();
     if (!v) { toast('请输入编号', 'err'); return; }
     const item = findItemByScan(v);
@@ -945,26 +1494,27 @@ function bindEvents() {
     }
   }
 
-  /* --- 记录页 --- */
   $('#recordSearch').addEventListener('input', renderRecords);
   $('#btnClearRecords').addEventListener('click', () => {
+    if (!currentUser?.isAdmin) { toast('仅管理员可操作', 'err'); return; }
     if (!state.records.length) { toast('暂无记录', 'err'); return; }
-    if (confirm('确定清空全部借还记录吗？此操作不可恢复（物品信息不受影响）。')) {
+    if (confirm('确定清空全部借还记录吗？此操作不可恢复。')) {
       state.records = [];
-      saveData(); renderRecords();
+      saveData().then(() => renderRecords());
       toast('记录已清空', 'ok');
     }
   });
   $('#recordBody').addEventListener('click', e => {
     const btn = e.target.closest('button[data-recid]');
     if (!btn) return;
+    if (!currentUser?.isAdmin) { toast('仅管理员可操作', 'err'); return; }
     state.records = state.records.filter(r => r.id !== btn.dataset.recid);
-    saveData(); renderRecords();
+    saveData().then(() => renderRecords());
     toast('记录已删除', 'ok');
   });
 
-  /* --- 导入导出 --- */
   $('#btnExport').addEventListener('click', () => {
+    if (!currentUser?.isAdmin) { toast('仅管理员可操作', 'err'); return; }
     const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -974,7 +1524,10 @@ function bindEvents() {
     toast('备份已导出', 'ok');
   });
 
-  $('#btnImport').addEventListener('click', () => $('#importFile').click());
+  $('#btnImport').addEventListener('click', () => {
+    if (!currentUser?.isAdmin) { toast('仅管理员可操作', 'err'); return; }
+    $('#importFile').click();
+  });
   $('#importFile').addEventListener('change', e => {
     const file = e.target.files[0];
     e.target.value = '';
@@ -984,10 +1537,17 @@ function bindEvents() {
       try {
         const d = JSON.parse(ev.target.result);
         if (!d || !Array.isArray(d.items)) throw new Error('格式不正确');
-        if (!confirm(`即将导入 ${d.items.length} 件物品、${(d.records || []).length} 条记录。\n\n「确定」= 覆盖当前数据\n「取消」= 放弃导入`)) return;
+        const msg = `即将导入 ${d.items.length} 件物品、${(d.records || []).length} 条记录`
+          + (Array.isArray(d.users) ? `、${d.users.length} 个用户` : '')
+          + `。\n\n「确定」= 覆盖当前数据\n「取消」= 放弃导入`;
+        if (!confirm(msg)) return;
         state.items = d.items;
         state.records = Array.isArray(d.records) ? d.records : [];
-        saveData(); renderAll();
+        state.users = Array.isArray(d.users) ? d.users : [];
+        saveData().then(() => {
+          renderAll();
+          verifySession();
+        });
         toast('导入成功', 'ok');
       } catch (err) {
         alert('导入失败：文件格式不正确。');
@@ -998,16 +1558,38 @@ function bindEvents() {
 }
 
 /* ============================================================
- *  初始化
+ *  启动
  * ============================================================ */
-(function init() {
+async function verifySession() {
+  try {
+    currentUser = JSON.parse(localStorage.getItem('loan_user_v1') || 'null');
+  } catch { currentUser = null; }
+
+  if (!currentUser) { showLogin(); return; }
+
+  await refreshData();
+  const u = state.users.find(x => x.id === currentUser.id);
+  if (!u || u.status !== 'approved') {
+    localStorage.removeItem('loan_user_v1');
+    currentUser = null;
+    showLogin();
+    return;
+  }
+  currentUser = { id: u.id, phone: u.phone, name: u.name, dept: u.dept || '', isAdmin: !!u.isAdmin };
+  localStorage.setItem('loan_user_v1', JSON.stringify(currentUser));
+
+  hideLogin();
+  applyPermissions();
+  renderAll();
+  handlePendingItem();
+}
+
+(async function init() {
   bindEvents();
   updateScanButtons();
-  
-  // 先去云端拿数据，拿完了再画界面
-  loadData().then(() => {
-    renderAll();
-  });
+
+  await loadData();
+  await verifySession();
 })();
 </script>
 </body>
